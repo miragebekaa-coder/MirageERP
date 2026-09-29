@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>إحصاءات الجهوزية | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="card">
+    <div class="card-head"><div><h2>نطاق التقرير</h2><p>الشهر والمشروع يحدّثان الأرقام والرسم، والحركة والسبب يصفّيان جدول حركة العمالة</p></div></div>
+    <div class="grid-3 filters">
+      <div class="field"><label for="fMonth">الشهر</label><select id="fMonth"></select></div>
+      <div class="field">
+        <label for="fProject">المشروع</label>
+        <select id="fProject"><option value="all">جارٍ التحميل…</option></select>
+        <div class="hint" id="fProjectNote"></div>
+      </div>
+      <div class="field">
+        <label for="fMove">حركة العمالة</label>
+        <select id="fMove">
+          <option value="all">بدء العمل وترك العمل</option>
+          <option value="joined">بدء العمل فقط</option>
+          <option value="left">ترك العمل فقط</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fReason">سبب ترك العمل</label>
+        <select id="fReason"><option value="">كل الأسباب</option></select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn btn-primary btn-block" id="loadBtn" onclick="load()">
+          <span class="btn-text">تحديث البيانات</span><span class="spinner"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-4">
+    <div class="stat"><div class="label">عدد التقارير</div><div class="value" id="kReports">—</div></div>
+    <div class="stat is-success"><div class="label">إجمالي الحضور</div><div class="value" id="kPresent">—</div><div class="foot">مجموع أيام الشهر</div></div>
+    <div class="stat is-danger"><div class="label">إجمالي النقص</div><div class="value" id="kShort">—</div><div class="foot">مجموع أيام الشهر</div></div>
+    <div class="stat is-warn"><div class="label">متوسط الجهوزية</div><div class="value" id="kRate">—</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="stat is-success"><div class="label">بدأوا العمل</div><div class="value" id="kJoined">—</div><div class="foot">من نماذج «موظف جديد» في الفترة</div></div>
+    <div class="stat is-danger"><div class="label">تركوا العمل</div><div class="value" id="kLeft">—</div><div class="foot" id="kLeftFoot">من نماذج «ترك العمل» في الفترة</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>الحضور مقابل النقص</h2><p id="chartSub">—</p></div></div>
+    <div style="position:relative;height:330px"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>النقص حسب الفئة</h2><p>أين يتركّز النقص فعلاً</p></div></div>
+    <div class="grid-3" id="byCat"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>حركة العمالة</h2><p id="moveSub">من بدأ العمل ومن تركه، وسبب الترك</p></div>
+      <span class="badge-pill" id="moveCount">—</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>الحركة</th><th>التاريخ</th><th>المشروع</th><th>الاسم</th><th>السبب / المسمى</th>
+          <th>فترة الإنذار</th><th>الزي</th><th>البطاقة</th><th>سجّله</th>
+        </tr></thead>
+        <tbody id="moveRows"><tr><td colspan="9" class="td-empty">—</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>التقارير اليومية</h2><p>أحدث التقارير أولاً</p></div>
+      <button class="btn btn-ghost btn-sm" onclick="window.print()">طباعة</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>التاريخ</th><th>المشروع</th><th>المشرف</th>
+          <th>عمال (مطلوب/حاضر)</th><th>مشرفون</th><th>مديرون</th>
+          <th>إجمالي الحضور</th><th>النقص</th><th>الجهوزية</th><th>بدأوا</th><th>تركوا</th><th>ملاحظات</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:26px">اختر النطاق واضغط تحديث</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var chart = null;
+var MOVE = { left: [], joined: [] };
+
+var u = Mirage.boot({
+  page: 'dashboard_readiness',
+  title: 'إحصاءات الجهوزية العددية',
+  sub: 'مقارنة الحضور الفعلي بالنقص حسب الشهر والمشروع والفئة'
+});
+
+if (u) {
+  Mirage.fillSelect('fMonth', Mirage.monthOptions(24), '', Mirage.thisMonth());
+  Mirage.lists().then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.fillProjectScope('fProject', res);
+    load();
+  });
+  document.getElementById('fMove').onchange = paintMoves;
+  document.getElementById('fReason').onchange = paintMoves;
+  document.getElementById('fMonth').onchange = load;
+  document.getElementById('fProject').onchange = load;
+}
+
+function load() {
+  var btn = document.getElementById('loadBtn');
+  Mirage.busy(btn, true);
+  var month = document.getElementById('fMonth').value;
+  var project = document.getElementById('fProject').value;
+
+  Promise.all([
+    Mirage.api('readiness_list', { user: u.realName, month: month, project: project }),
+    Mirage.api('movement_list', { month: month, project: project })
+  ]).then(function (r) {
+    Mirage.busy(btn, false);
+    if (r[0].status !== 'success') return Mirage.fail(r[0]);
+    render(r[0].reports || [], r[0].by_date || {}, month, project);
+    if (r[1].status !== 'success') {
+      MOVE = { left: [], joined: [] };
+      document.getElementById('moveRows').innerHTML =
+        '<tr><td colspan="9" class="td-empty">' + esc(r[1].message) + (r[1].detail ? ' — ' + esc(r[1].detail) : '') + '</td></tr>';
+      return;
+    }
+    MOVE = { left: r[1].left || [], joined: r[1].joined || [] };
+    var reasons = MOVE.left.map(function (x) { return x.reason; })
+      .filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort();
+    Mirage.fillSelect('fReason', reasons, 'كل الأسباب', document.getElementById('fReason').value);
+    paintMoves();
+  });
+}
+
+/** جدول حركة العمالة بحسب نوع الحركة وسبب الترك */
+function paintMoves() {
+  var mv = document.getElementById('fMove').value;
+  var reason = document.getElementById('fReason').value;
+  var left = MOVE.left.filter(function (x) { return !reason || x.reason === reason; });
+  var joined = reason ? [] : MOVE.joined;           // السبب يخصّ ترك العمل وحده
+
+  document.getElementById('kJoined').textContent = MOVE.joined.length;
+  document.getElementById('kLeft').textContent = MOVE.left.length;
+
+  // أكثر أسباب الترك تكراراً
+  var byReason = {};
+  MOVE.left.forEach(function (x) { byReason[x.reason] = (byReason[x.reason] || 0) + 1; });
+  var top = Object.keys(byReason).sort(function (a, b) { return byReason[b] - byReason[a]; })[0];
+  document.getElementById('kLeftFoot').textContent = top
+    ? 'أكثر الأسباب: ' + top + ' (' + byReason[top] + ')' : 'من نماذج «ترك العمل» في الفترة';
+
+  var rows = [];
+  if (mv !== 'left') joined.forEach(function (x) { rows.push({ k: 'joined', d: x }); });
+  if (mv !== 'joined') left.forEach(function (x) { rows.push({ k: 'left', d: x }); });
+  rows.sort(function (a, b) { return a.d.date < b.d.date ? 1 : -1; });
+
+  document.getElementById('moveCount').textContent = rows.length + ' حركة';
+  document.getElementById('moveRows').innerHTML = rows.length
+    ? rows.map(function (r) {
+        var x = r.d, isLeft = r.k === 'left';
+        var yn = function (v) { return '<span class="tag tag-' + (v === 'نعم' ? 'green' : 'red') + '">' + v + '</span>'; };
+        return '<tr>' +
+          '<td>' + (isLeft ? '<span class="tag tag-red">ترك العمل</span>' : '<span class="tag tag-green">بدء العمل</span>') + '</td>' +
+          '<td style="white-space:nowrap;font-weight:800">' + esc(x.date) + '</td>' +
+          '<td>' + esc(x.project) + '</td>' +
+          '<td style="font-weight:800">' + esc(x.name) +
+            (isLeft
+              ? (x.probation ? ' <span class="tag tag-purple">ترك خلال التجربة</span>' : '')
+              : ' ' + Mirage.probationTag(x.date)) + '</td>' +
+          '<td>' + esc(isLeft ? x.reason : (x.job || '—')) + '</td>' +
+          '<td>' + (isLeft ? yn(x.notice) : '—') + '</td>' +
+          '<td>' + (isLeft ? yn(x.uniform) : '—') + '</td>' +
+          '<td>' + (isLeft ? yn(x.card) : '—') + '</td>' +
+          '<td>' + esc(x.by || '—') + Mirage.entryLine(x) + '</td></tr>';
+      }).join('')
+    : '<tr><td colspan="9" class="td-empty">لا حركة عمالة مطابقة في هذه الفترة.</td></tr>';
+}
+
+function render(list, byDate, month, project) {
+  var tot = { req: 0, pre: 0, sho: 0, shW: 0, shS: 0, shM: 0, reqW: 0, reqS: 0, reqM: 0 };
+  list.forEach(function (r) {
+    tot.req += r.required; tot.pre += r.total; tot.sho += r.shortage;
+    tot.shW += r.sh_w; tot.shS += r.sh_s; tot.shM += r.sh_m;
+    tot.reqW += r.req_w; tot.reqS += r.req_s; tot.reqM += r.req_m;
+  });
+
+  document.getElementById('kReports').textContent = list.length;
+  document.getElementById('kPresent').textContent = tot.pre;
+  document.getElementById('kShort').textContent   = tot.sho;
+  document.getElementById('kRate').textContent    = tot.req ? Math.round(tot.pre / tot.req * 100) + '%' : '—';
+  document.getElementById('chartSub').textContent =
+    (project === 'all' ? 'كل المشاريع' : project) + ' — ' + (month ? Mirage.monthName(month) : 'كل الفترات');
+
+  document.getElementById('byCat').innerHTML = [
+    ['العمال', tot.shW, tot.reqW], ['المشرفون', tot.shS, tot.reqS], ['مديرو المشروع', tot.shM, tot.reqM]
+  ].map(function (c) {
+    var pct = c[2] ? Math.round(c[1] / c[2] * 100) : 0;
+    return '<div class="stat' + (c[1] ? ' is-danger' : ' is-success') + '">' +
+      '<div class="label">نقص ' + c[0] + '</div><div class="value">' + c[1] + '</div>' +
+      '<div class="foot">' + pct + '% من المطلوب خلال الفترة</div></div>';
+  }).join('');
+
+  document.getElementById('rows').innerHTML = list.length
+    ? list.map(function (r) {
+        var rate = r.required ? Math.round(r.total / r.required * 100) : 0;
+        var tone = rate >= 95 ? 'green' : (rate >= 80 ? 'yellow' : 'red');
+        return '<tr>' +
+          '<td style="white-space:nowrap;font-weight:800">' + esc(r.date) + Mirage.entryLine(r) + '</td>' +
+          '<td>' + esc(r.project) + '</td><td>' + esc(r.supervisor) + '</td>' +
+          '<td>' + r.req_w + ' / ' + r.pre_w + (r.sh_w ? ' <span class="tag tag-red" dir="ltr">-' + r.sh_w + '</span>' : '') + '</td>' +
+          '<td>' + r.req_s + ' / ' + r.pre_s + (r.sh_s ? ' <span class="tag tag-red" dir="ltr">-' + r.sh_s + '</span>' : '') + '</td>' +
+          '<td>' + r.req_m + ' / ' + r.pre_m + (r.sh_m ? ' <span class="tag tag-red" dir="ltr">-' + r.sh_m + '</span>' : '') + '</td>' +
+          '<td style="font-weight:900">' + r.total + '</td>' +
+          '<td style="font-weight:900;color:' + (r.shortage ? 'var(--danger)' : 'var(--success)') + '">' + r.shortage + '</td>' +
+          '<td><span class="tag tag-' + tone + '">' + rate + '%</span></td>' +
+          '<td>' + (r.joined ? '<span class="tag tag-green">' + r.joined + '</span>' : '—') + '</td>' +
+          '<td>' + (r.left ? '<span class="tag tag-red">' + r.left + '</span>' : '—') + '</td>' +
+          '<td style="max-width:200px">' + esc(r.notes || '—') + '</td></tr>';
+      }).join('')
+    : '<tr><td colspan="12" style="text-align:center;padding:34px;color:var(--text-muted)">' +
+      'لا تقارير في هذا النطاق. جرّب شهراً آخر أو مشروعاً آخر.</td></tr>';
+
+  var labels = Object.keys(byDate).sort();
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'إجمالي الحضور', data: labels.map(function (d) { return byDate[d].total; }),
+          backgroundColor: '#2563EB', borderRadius: 6 },
+        { label: 'إجمالي النقص', data: labels.map(function (d) { return byDate[d].shortage; }),
+          backgroundColor: '#DC2626', borderRadius: 6 }
+      ]
+    },
+    options: {
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Tajawal' } } },
+        y: { beginAtZero: true, ticks: { font: { family: 'Tajawal' } }, grid: { color: '#E2E8F0' } }
+      },
+      plugins: {
+        legend: { position: 'top', labels: { font: { family: 'Tajawal', weight: '700' }, usePointStyle: true } },
+        tooltip: { rtl: true, bodyFont: { family: 'Tajawal' }, titleFont: { family: 'Tajawal' } }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>

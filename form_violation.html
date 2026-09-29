@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>بلاغ مخالفة | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <div class="alert alert-info" id="routeNote" style="display:none">جارٍ قراءة مسار الاعتماد…</div>
+
+  <form id="vForm">
+    <!-- ١ — المُبلغ -->
+    <div class="card">
+      <div class="card-head">
+        <div><h2>بيانات المُبلغ</h2><p>تُقرأ من حسابك ولا يمكن تعديلها</p></div>
+      </div>
+      <div class="grid-4">
+        <div class="field"><label>اسم المُبلغ</label><input type="text" id="reporter" readonly></div>
+        <div class="field"><label>المركز</label><input type="text" id="center" readonly></div>
+        <div class="field"><label>المشروع</label><input type="text" id="project" readonly></div>
+        <div class="field">
+          <label for="vdate">تاريخ المخالفة</label>
+          <input type="date" id="vdate" required>
+          <div class="hint">تاريخ اليوم تلقائياً، ويمكن تعديله</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ٢ — الموظف المخالف -->
+    <div class="card">
+      <div class="card-head">
+        <div><h2>الموظف المخالف</h2><p>اختره من قاعدة بيانات الموظفين لتُقرأ وظيفته وتاريخ توظيفه</p></div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="location.href='employees.html'" id="empPageBtn">إدارة الموظفين</button>
+      </div>
+
+      <div class="field">
+        <label for="empSelect">الموظف</label>
+        <select id="empSelect" required><option value="">جارٍ تحميل قائمة الموظفين…</option></select>
+        <div class="hint" id="empHint">لم تجد الموظف؟ أضفه من صفحة بيانات الموظفين أولاً.</div>
+      </div>
+
+      <div class="grid-3">
+        <div class="field"><label>الرقم الوظيفي</label><input type="text" id="empId" readonly></div>
+        <div class="field"><label>الوظيفة</label><input type="text" id="empJob" readonly></div>
+        <div class="field">
+          <label>تاريخ التوظيف</label>
+          <input type="text" id="empHire" readonly>
+          <div class="hint" id="serviceHint"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ٣ — سجل المخالفات -->
+    <div class="card" id="histCard" style="display:none">
+      <div class="card-head">
+        <div><h2>سجل مخالفات الموظف</h2><p id="histSub">—</p></div>
+        <span class="badge-pill" id="histCount">—</span>
+      </div>
+      <div class="mini-log table-wrap" id="histWrap"></div>
+    </div>
+
+    <!-- ٤ — التصنيف والجزاء -->
+    <div class="card">
+      <div class="card-head">
+        <div><h2>تصنيف المخالفة</h2><p>اختر الرقم فيُكمل النوع تلقائياً، أو اختر النوع فيُكمل الرقم</p></div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="code">رقم المخالفة</label>
+          <select id="code" required><option value="">جارٍ التحميل…</option></select>
+        </div>
+        <div class="field">
+          <label for="vtype">نوع المخالفة</label>
+          <select id="vtype" required><option value="">جارٍ التحميل…</option></select>
+        </div>
+      </div>
+
+      <div class="field" id="penaltyBox" style="display:none">
+        <label>الجزاء المقترح بحسب سجل المخالفات</label>
+        <input type="text" id="penalty" readonly>
+        <div class="hint" id="penaltyHint"></div>
+      </div>
+
+      <div class="field">
+        <label for="details">وصف الواقعة</label>
+        <textarea id="details" rows="4" placeholder="اذكر الوقت والمكان وما حدث بدقة، ومن شهد الواقعة إن وُجد" required></textarea>
+      </div>
+    </div>
+
+    <!-- ٥ — رأي الموظف وتوقيعه -->
+    <div class="card">
+      <div class="card-head">
+        <div><h2>رأي الموظف المخالف وتوقيعه</h2>
+        <p>اقرأ البلاغ على الموظف، ثم دوّن رأيه ووقّعه على الشاشة</p></div>
+      </div>
+
+      <div class="field">
+        <label for="opinion">رأي الموظف أو دفاعه</label>
+        <textarea id="opinion" rows="3" placeholder="ما قاله الموظف بنصه، أو: امتنع عن الإفادة"></textarea>
+      </div>
+
+      <div class="field">
+        <label>توقيع الموظف على الشاشة</label>
+        <div class="sign-box" id="signBox">
+          <canvas id="signPad"></canvas>
+          <div class="sign-hint">وقّع هنا بالإصبع أو الفأرة</div>
+        </div>
+        <div class="btn-row" style="margin-top:12px">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="clearSign()">محو التوقيع</button>
+          <label class="check-item" style="flex:1;margin:0">
+            <input type="checkbox" id="refused"> امتنع الموظف عن التوقيع
+          </label>
+        </div>
+        <div class="hint">التوقيع يُحفظ كصورة في أرشيف النظام، ويظهر لمن يعتمد البلاغ.</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary" id="sendBtn">
+        <span class="btn-text">إرسال البلاغ للاعتماد</span><span class="spinner"></span>
+      </button>
+      <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+    </div>
+  </form>
+
+</div>
+</div>
+</div>
+
+<script>
+var VT = [], EMPS = [], CUR = null, SUG = null, PAD = null;
+
+var u = Mirage.boot({
+  page: 'form_violation',
+  title: 'تقديم بلاغ مخالفة',
+  sub: 'يُوجّه البلاغ تلقائياً إلى أول محطة في مسار الاعتماد'
+});
+
+if (u) {
+  document.getElementById('reporter').value = u.realName;
+  document.getElementById('center').value   = u.department || '—';
+  document.getElementById('project').value  = u.project || '—';
+  document.getElementById('vdate').value    = Mirage.today();
+  document.getElementById('vdate').max      = Mirage.today();
+
+  if (!Mirage.can('employees')) document.getElementById('empPageBtn').style.display = 'none';
+
+  PAD = Mirage.signature('signPad');
+  document.getElementById('refused').onchange = function () {
+    if (this.checked) clearSign();
+  };
+
+  /* طلب واحد يجلب: المسار + لائحة المخالفات + الموظفين */
+  Mirage.lists({ employees: true }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+
+    // مسار الاعتماد يراه مدير النظام وحده
+    Mirage.routeNote('routeNote', {
+      form: 'المخالفات',
+      route: res.route_violations || [],
+      intro: 'سيمرّ بلاغك بهؤلاء بالترتيب، وكلٌّ يبدي رأيه بدوره:'
+    });
+
+    VT = res.violation_types || [];
+    if (VT.length) {
+      Mirage.fillSelect('code',  VT.map(function (v) { return { value: v.code, text: v.code }; }), 'اختر الرقم…');
+      Mirage.fillSelect('vtype', VT.map(function (v) { return { value: v.code, text: v.type }; }), 'اختر النوع…');
+    } else {
+      Mirage.fillSelect('code', [], 'لا توجد لائحة مخالفات');
+      Mirage.fillSelect('vtype', [], 'لا توجد لائحة مخالفات');
+    }
+
+    // الموظفون في نطاق المستخدم (قاعدة البيانات تحصرهم بمشاريعه)، ممن لم تنتهِ خدمتهم
+    var staff = (res.employees || []).filter(function (e) { return e.state !== 'منتهي الخدمة'; });
+    // من مستواه 1 فأكثر يرى أيضاً المستخدمين الذين يترأسهم
+    var team = (Number(u.accessLevel) >= 1 ? (res.team_users || []) : []).map(function (t) {
+      return { id: 'U:' + t.username, name: t.name, job: t.job, project: t.project,
+               hire_date: t.hire_date, user: true };
+    });
+    EMPS = staff.concat(team);
+
+    if (!EMPS.length) {
+      Mirage.fillSelect('empSelect', [], 'لا يوجد موظفون مسجّلون');
+      document.getElementById('empHint').innerHTML =
+        '<span style="color:var(--danger);font-weight:800">لا موظفين في نطاقك — أضفهم من صفحة بيانات الموظفين.</span>';
+      return;
+    }
+    var opt = function (e) {
+      return '<option value="' + esc(e.id) + '">' + esc(e.name) + ' — ' + esc(e.job || 'بلا وظيفة') +
+        (e.user ? (e.project ? ' · ' + esc(e.project) : '') : ' (' + esc(e.id) + ')') +
+        (Mirage.onProbation(e.hire_date) ? ' · تحت التجربة' : '') + '</option>';
+    };
+    document.getElementById('empSelect').innerHTML = '<option value="">اختر الموظف…</option>' +
+      (team.length
+        ? '<optgroup label="موظفو المشاريع (' + staff.length + ')">' + staff.map(opt).join('') + '</optgroup>' +
+          '<optgroup label="المستخدمون الذين تترأسهم (' + team.length + ')">' + team.map(opt).join('') + '</optgroup>'
+        : staff.map(opt).join(''));
+    if (team.length) {
+      document.getElementById('empHint').textContent =
+        'تجد في آخر القائمة المستخدمين الذين تترأسهم مباشرة أو عبر مسؤولين وسيطين.';
+    }
+  });
+
+  document.getElementById('empSelect').onchange = function () {
+    CUR = EMPS.filter(function (e) { return e.id === this.value; }.bind(this))[0] || null;
+    if (!CUR) return;
+    document.getElementById('empId').value   = CUR.user ? 'مستخدم في النظام' : CUR.id;
+    document.getElementById('empJob').value  = CUR.job || '—';
+    document.getElementById('empHire').value = CUR.hire_date || '—';
+    serviceHint();
+    refresh();
+  };
+  document.getElementById('vdate').addEventListener('change', serviceHint);
+
+  /** مدة الخدمة، وهل الموظف تحت التجربة في تاريخ المخالفة */
+  function serviceHint() {
+    var el = document.getElementById('serviceHint');
+    if (!CUR || !CUR.hire_date) { el.innerHTML = ''; return; }
+    var ref = document.getElementById('vdate').value;
+    el.innerHTML = 'مدة الخدمة: ' + esc(service(CUR.hire_date)) +
+      (Mirage.onProbation(CUR.hire_date, ref)
+        ? ' ' + Mirage.probationTag(CUR.hire_date, ref) + ' حتى <span style="white-space:nowrap">' + esc(Mirage.ltr(Mirage.probationEnd(CUR.hire_date))) + '</span>'
+        : '');
+  }
+
+  function syncCode(from, to) {
+    document.getElementById(from).onchange = function () {
+      document.getElementById(to).value = this.value;
+      refresh();
+    };
+  }
+  syncCode('code', 'vtype');
+  syncCode('vtype', 'code');
+
+  document.getElementById('vForm').onsubmit = function (e) {
+    e.preventDefault();
+    if (!CUR) return Mirage.note('اختر الموظف المخالف أولاً');
+
+    var refused = document.getElementById('refused').checked;
+    var sig = (PAD && !PAD.isEmpty()) ? PAD.dataURL() : '';
+    if (!sig && !refused) {
+      return Mirage.note('وقّع الموظف على الشاشة، أو أشّر على «امتنع الموظف عن التوقيع».');
+    }
+    var signState = refused ? 'امتنع عن التوقيع' : 'وقّع على الشاشة';
+    var opinion = document.getElementById('opinion').value.trim();
+
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+
+    Mirage.api('violation_new', {
+      reporter:         u.realName,
+      center:           u.department,
+      project:          CUR.project || u.project,
+      violation_date:   document.getElementById('vdate').value,
+      employee_id:      CUR.id,
+      offender:         CUR.name,
+      offender_job:     CUR.job,
+      hire_date:        CUR.hire_date,
+      code:             document.getElementById('code').value,
+      type:             SUG ? SUG.type : '',
+      repeat_level:     SUG ? SUG.level : 1,
+      penalty:          document.getElementById('penalty').value,
+      details:          document.getElementById('details').value.trim(),
+      employee_opinion: opinion,
+      sign_state:       signState,
+      signature:        sig
+    }).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('رقم البلاغ ' + res.id + (Mirage.isAdmin() && res.station ? '، وهو الآن بانتظار ' + res.station
+                                          : '، وأُحيل للاعتماد'), 'سُجّل البلاغ')
+        .then(function () { location.href = 'index.html'; });
+    });
+  };
+}
+
+/** يجلب سجل الموظف والجزاء المتدرّج معاً */
+function refresh() {
+  if (!CUR) return;
+  var code = document.getElementById('code').value;
+
+  Mirage.api('employee_violations', {
+    employee_id: CUR.id, employee_name: CUR.name, code: code
+  }).then(function (res) {
+    var h = res.history || [];
+    var card = document.getElementById('histCard');
+    card.style.display = 'block';
+    document.getElementById('histCount').textContent = h.length + ' مخالفة';
+    document.getElementById('histSub').textContent =
+      h.length ? 'كل المخالفات المسجّلة على ' + CUR.name : 'لا مخالفات سابقة على ' + CUR.name;
+
+    document.getElementById('histWrap').innerHTML = h.length
+      ? '<table><thead><tr><th>الرقم</th><th>التاريخ</th><th>النوع</th>' +
+        '<th>التكرار</th><th>الجزاء</th><th>الحالة</th></tr></thead><tbody>' +
+        h.map(function (v) {
+          var same = code && v.code === code;
+          return '<tr' + (same ? ' style="background:#FFFBEB"' : '') + '>' +
+            '<td>' + esc(v.id) + '</td><td style="white-space:nowrap">' + esc(v.date) + '</td>' +
+            '<td>' + esc(v.type) + '</td><td>' + (v.repeat || '—') + '</td>' +
+            '<td>' + esc(v.penalty || '—') + '</td><td>' + Mirage.tag(v.state) + '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<div class="empty" style="padding:26px"><span class="ico">✅</span><b>سجل نظيف</b>هذه أول مخالفة تُسجَّل على الموظف.</div>';
+
+    SUG = res.suggestion || null;
+    var box = document.getElementById('penaltyBox');
+    if (SUG && SUG.penalty) {
+      document.getElementById('penalty').value = SUG.penalty;
+      document.getElementById('penaltyHint').textContent =
+        SUG.previous === 0
+          ? 'أول مرة لهذه المخالفة — الدرجة الأولى من اللائحة'
+          : 'تكرار رقم ' + SUG.level + ' (سبقتها ' + SUG.previous + ' مخالفة من النوع نفسه)';
+      box.style.display = 'block';
+    } else if (SUG) {
+      document.getElementById('penalty').value = '';
+      document.getElementById('penaltyHint').textContent =
+        'لم تُحدَّد درجات الجزاء لهذه المخالفة في ورقة نظام_المخالفات.';
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
+  });
+}
+
+function clearSign() {
+  if (PAD) PAD.clear();
+}
+
+function service(hire) {
+  var d = new Date(hire);
+  if (isNaN(d)) return '—';
+  var months = (new Date().getFullYear() - d.getFullYear()) * 12 + (new Date().getMonth() - d.getMonth());
+  if (months < 0) return '—';
+  var y = Math.floor(months / 12), m = months % 12;
+  return (y ? y + ' سنة ' : '') + (m ? m + ' شهر' : (y ? '' : 'أقل من شهر'));
+}
+</script>
+</body>
+</html>

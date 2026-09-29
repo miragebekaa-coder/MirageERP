@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>تقرير الجهوزية العددية | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <form id="rForm">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>بيانات التقرير</h2><p>الأعداد المطلوبة تُقرأ من عقد المشروع ولا تُكتب يدوياً</p></div>
+      </div>
+      <div class="grid-3">
+        <div class="field"><label>المشروع</label><input type="text" id="project" readonly></div>
+        <div class="field"><label>المشرف</label><input type="text" id="supervisor" readonly></div>
+        <div class="field">
+          <label for="date">تاريخ التقرير</label>
+          <input type="date" id="date" required>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>الحضور حسب الفئة</h2><p>معبّأ مسبقاً بالعدد المطلوب — عدّله إلى الحاضر فعلاً على الموقع</p></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="resetPresent">إعادة للأعداد المطلوبة</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>الفئة</th><th style="width:130px">العدد المطلوب</th>
+            <th style="width:150px">الحاضر</th><th style="width:120px">النقص</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="font-weight:800">العمال</td>
+              <td><span id="reqW" style="font-weight:900">—</span></td>
+              <td><input type="number" id="preW" min="0" value="0" required></td>
+              <td><span id="shW" style="font-weight:900;color:var(--danger)">0</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:800">المشرفون</td>
+              <td><span id="reqS" style="font-weight:900">—</span></td>
+              <td><input type="number" id="preS" min="0" value="0" required></td>
+              <td><span id="shS" style="font-weight:900;color:var(--danger)">0</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:800">مديرو المشروع</td>
+              <td><span id="reqM" style="font-weight:900">—</span></td>
+              <td><input type="number" id="preM" min="0" value="0" required></td>
+              <td><span id="shM" style="font-weight:900;color:var(--danger)">0</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>حركة العمالة في هذا اليوم</h2><p>تُحسب تلقائياً من نموذجي «موظف جديد» و«ترك العمل» ولا تُكتب يدوياً</p></div>
+      </div>
+      <div class="grid-2">
+        <div class="stat is-success"><div class="label">بدأوا العمل</div><div class="value" id="mJoined">—</div>
+          <div class="foot">تاريخ بدء العمل الفعلي = تاريخ التقرير · <a href="new_hire.html" id="lnkJoin">تسجيل موظف جديد</a></div></div>
+        <div class="stat is-danger"><div class="label">تركوا العمل</div><div class="value" id="mLeft">—</div>
+          <div class="foot">تاريخ ترك العمل = تاريخ التقرير · <a href="resignations.html" id="lnkLeave">تسجيل ترك عمل</a></div></div>
+      </div>
+      <div class="hint" style="margin-top:10px">إن سجّلتَ حركة بعد إرسال التقرير، يُحدَّث التقرير بها تلقائياً.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>أسباب عدم الحضور</h2><p>توزيع الغائبين لأغراض التحليل</p></div>
+      </div>
+      <div class="grid-3">
+        <div class="field"><label for="leave">إجازة معتمدة</label><input type="number" id="leave" min="0" value="0"></div>
+        <div class="field"><label for="absent">غياب بدون عذر</label><input type="number" id="absent" min="0" value="0"></div>
+        <div class="field"><label for="sick">إجازة مرضية</label><input type="number" id="sick" min="0" value="0"></div>
+      </div>
+      <div class="field">
+        <label for="notes">ملاحظات</label>
+        <textarea id="notes" rows="3" placeholder="سبب النقص، أو إجراء اتُّخذ لتغطيته"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>الخلاصة</h2><p>تُحسب لحظياً مع كل رقم تُدخله</p></div></div>
+      <div class="grid-4">
+        <div class="stat"><div class="label">إجمالي المطلوب</div><div class="value" id="sReq">—</div><div class="foot">الفئات الثلاث</div></div>
+        <div class="stat is-success"><div class="label">إجمالي الحضور</div><div class="value" id="sTotal">0</div></div>
+        <div class="stat is-danger"><div class="label">إجمالي النقص</div><div class="value" id="sShort">0</div></div>
+        <div class="stat is-warn"><div class="label">نسبة الجهوزية</div><div class="value" id="sRate">0%</div></div>
+      </div>
+      <div id="warnBox"></div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary" id="sendBtn">
+        <span class="btn-text">إرسال تقرير اليوم</span><span class="spinner"></span>
+      </button>
+      <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+    </div>
+  </form>
+
+</div>
+</div>
+</div>
+
+<script>
+var REQ = { workers: 0, supervisors: 0, managers: 0 };
+
+var u = Mirage.boot({
+  page: 'form_readiness',
+  title: 'تقرير الجهوزية العددية',
+  sub: 'حضور العمال والمشرفين ومديري المشروع مقابل العدد التعاقدي'
+});
+
+if (u) {
+  document.getElementById('supervisor').value = u.realName;
+  document.getElementById('project').value    = u.project || '—';
+  document.getElementById('date').value       = Mirage.today();
+  document.getElementById('date').max         = Mirage.today();
+
+  if (!u.project) {
+    document.querySelector('.content').insertAdjacentHTML('afterbegin',
+      '<div class="alert alert-danger">لم يُربط حسابك بمشروع، ولا يمكن قراءة الأعداد المطلوبة. ' +
+      'اطلب من مدير النظام تحديد «المشروع المرتبط» في بياناتك.</div>');
+    document.getElementById('sendBtn').disabled = true;
+  } else {
+    Mirage.lists().then(function (res) {
+      var r = res.required || {};
+      REQ = { workers: r.workers || 0, supervisors: r.supervisors || 0, managers: r.managers || 0 };
+      document.getElementById('reqW').textContent = REQ.workers;
+      document.getElementById('reqS').textContent = REQ.supervisors;
+      document.getElementById('reqM').textContent = REQ.managers;
+      fillPresent();
+      var total = REQ.workers + REQ.supervisors + REQ.managers;
+      document.getElementById('sReq').textContent = total || '—';
+      if (!total) {
+        document.querySelector('.content').insertAdjacentHTML('afterbegin',
+          '<div class="alert alert-warn">الأعداد المطلوبة لمشروع «' + esc(u.project) +
+          '» غير محدَّدة في الإعدادات. أبلغ مدير النظام ليضيفها.</div>');
+      }
+      calc();
+    });
+  }
+
+  function n(id) { return Math.max(0, parseInt(document.getElementById(id).value, 10) || 0); }
+
+  /** الحاضر افتراضياً = المطلوب حسب العقد، ويعدّله المشرف بحسب الواقع */
+  function fillPresent() {
+    document.getElementById('preW').value = REQ.workers;
+    document.getElementById('preS').value = REQ.supervisors;
+    document.getElementById('preM').value = REQ.managers;
+    calc();
+  }
+  document.getElementById('resetPresent').onclick = fillPresent;
+
+  if (!Mirage.can('new_hire'))     document.getElementById('lnkJoin').style.display = 'none';
+  if (!Mirage.can('resignations')) document.getElementById('lnkLeave').style.display = 'none';
+
+  /** من بدأ ومن ترك في المشروع والتاريخ المختارين */
+  function movement() {
+    if (!u.project) return;
+    Mirage.api('movement_counts', { project: u.project, date: document.getElementById('date').value })
+      .then(function (res) {
+        if (res.status !== 'success') {
+          document.getElementById('mJoined').textContent = '—';
+          document.getElementById('mLeft').textContent = '—';
+          return;
+        }
+        document.getElementById('mJoined').textContent = res.joined;
+        document.getElementById('mLeft').textContent = res.left;
+      });
+  }
+  document.getElementById('date').addEventListener('change', movement);
+  movement();
+
+  function calc() {
+    var pw = n('preW'), ps = n('preS'), pm = n('preM');
+    var sw = Math.max(0, REQ.workers - pw);
+    var sv = Math.max(0, REQ.supervisors - ps);
+    var sm = Math.max(0, REQ.managers - pm);
+
+    document.getElementById('shW').textContent = sw;
+    document.getElementById('shS').textContent = sv;
+    document.getElementById('shM').textContent = sm;
+
+    var req = REQ.workers + REQ.supervisors + REQ.managers;
+    var tot = pw + ps + pm;
+    var sho = sw + sv + sm;
+
+    document.getElementById('sTotal').textContent = tot;
+    document.getElementById('sShort').textContent = sho;
+    document.getElementById('sRate').textContent  = req ? Math.round(tot / req * 100) + '%' : '0%';
+
+    var box = document.getElementById('warnBox');
+    var abs = n('leave') + n('absent') + n('sick');
+    if (req && tot + abs > req) {
+      box.innerHTML = '<div class="alert alert-warn" style="margin:18px 0 0">' +
+        'مجموع الحضور والغياب (' + (tot + abs) + ') يتجاوز العدد المطلوب (' + req +
+        '). تأكّد من الأرقام قبل الإرسال.</div>';
+    } else { box.innerHTML = ''; }
+  }
+
+  ['preW', 'preS', 'preM', 'leave', 'absent', 'sick'].forEach(function (id) {
+    document.getElementById(id).oninput = calc;
+  });
+
+  document.getElementById('rForm').onsubmit = function (e) {
+    e.preventDefault();
+    if (n('preW') + n('preS') + n('preM') === 0) {
+      return Mirage.confirm('الحضور صفر في كل الفئات. هل الموقع فعلاً بلا عمالة؟').then(function (yes) {
+        if (yes) send();
+      });
+    }
+    send();
+  };
+
+  function send() {
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+    Mirage.api('readiness_new', {
+      supervisor: u.realName,
+      project: u.project,
+      date: document.getElementById('date').value,
+      present_workers: n('preW'),
+      present_supervisors: n('preS'),
+      present_managers: n('preM'),
+      leave: n('leave'), absent: n('absent'), sick: n('sick'),
+      notes: document.getElementById('notes').value.trim()
+    }).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('النقص المسجَّل: ' + res.shortage + ' من أصل ' + res.required +
+        ' — بدأوا العمل: ' + res.joined + ' · تركوا العمل: ' + res.left, 'أُرسل التقرير')
+        .then(function () { location.href = 'index.html'; });
+    });
+  }
+}
+</script>
+</body>
+</html>

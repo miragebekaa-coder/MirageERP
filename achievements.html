@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>منجزات المستخدمين | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="grid-3">
+    <div class="stat"><div class="label">إجمالي الإدخالات</div><div class="value" id="kTotal">—</div><div class="foot" id="kRange">—</div></div>
+    <div class="stat is-success"><div class="label">الأكثر إنجازاً</div><div class="value" id="kTop" style="font-size:20px">—</div><div class="foot" id="kTopN">—</div></div>
+    <div class="stat is-warn"><div class="label">مستخدمون بلا إدخالات</div><div class="value" id="kIdle">—</div><div class="foot">في هذه الفترة</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>🏅 منجزات المستخدمين</h2><p>ما أدخله كل مستخدم في النظام — اضغط أي رقم لعرض تفاصيله</p></div>
+      <button class="btn btn-ghost btn-sm" id="refreshBtn">تحديث</button>
+    </div>
+
+    <div class="grid-4 filters">
+      <div class="field"><label for="fYear">السنة</label><select id="fYear"></select></div>
+      <div class="field"><label for="fMonth">الشهر</label><select id="fMonth"></select></div>
+      <div class="field"><label for="fProject">المشروع</label><select id="fProject"></select></div>
+      <div class="field"><label for="fText">بحث بالاسم</label><input type="search" id="fText" placeholder="اسم المستخدم…"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>المستخدم</th><th>بلاغات مخالفة</th><th>تقارير جهوزية</th>
+          <th>مهام سجّلها</th><th>مهام أنجزها</th><th>ملفات أرسلها</th>
+          <th>موظفون جدد</th><th>ترك عمل</th><th>اقتراحات</th><th>الإجمالي</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="10" class="td-empty">جارٍ التحميل…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var ROWS = [];
+var KINDS = {
+  violations:    'بلاغات المخالفات',
+  readiness:     'تقارير الجهوزية',
+  tasks_created: 'المهام التي سجّلها',
+  tasks_done:    'المهام التي أنجزها',
+  files:         'الملفات التي أرسلها',
+  new_hires:     'الموظفون الجدد',
+  resignations:  'حالات ترك العمل',
+  suggestions:   'الاقتراحات التحسينية'
+};
+
+var u = Mirage.boot({
+  page: 'achievements',
+  title: 'منجزات المستخدمين',
+  sub: 'حصيلة عمل كل مستخدم في النظام — لمدير النظام والإدارة العليا'
+});
+
+if (u) {
+  var y = new Date().getFullYear(), years = [];
+  for (var i = 0; i < 4; i++) years.push(String(y - i));
+  Mirage.fillSelect('fYear', years.map(function (v) { return { value: v, text: v }; }), '', String(y));
+  Mirage.fillSelect('fMonth', Mirage.MONTHS.map(function (t, i) {
+    return { value: ('0' + (i + 1)).slice(-2), text: t };
+  }), 'كل السنة', ('0' + (new Date().getMonth() + 1)).slice(-2));
+
+  Mirage.lists().then(function (res) {
+    Mirage.fillSelect('fProject', (res.projects || []).map(function (n) { return { value: n, text: n }; }),
+      'كل المشاريع', '');
+  });
+
+  document.getElementById('fYear').onchange = load;
+  document.getElementById('fMonth').onchange = load;
+  document.getElementById('fProject').onchange = paint;
+  document.getElementById('fText').oninput = paint;
+  document.getElementById('refreshBtn').onclick = load;
+  load();
+}
+
+/** بداية الفترة ونهايتها من السنة والشهر */
+function range() {
+  var y = document.getElementById('fYear').value;
+  var m = document.getElementById('fMonth').value;
+  if (!m) return { from: y + '-01-01', to: y + '-12-31', text: 'سنة ' + y };
+  var last = new Date(Number(y), Number(m), 0).getDate();
+  return { from: y + '-' + m + '-01', to: y + '-' + m + '-' + last,
+           text: Mirage.monthName(y + '-' + m) };
+}
+
+function load() {
+  var r = range();
+  document.getElementById('kRange').textContent = r.text;
+  document.getElementById('rows').innerHTML = '<tr><td colspan="10" class="td-empty">جارٍ التحميل…</td></tr>';
+  Mirage.api('achievements', { from: r.from, to: r.to }).then(function (res) {
+    if (res.status !== 'success') {
+      document.getElementById('rows').innerHTML =
+        '<tr><td colspan="10" class="td-empty">' + esc(res.message) + '</td></tr>';
+      return Mirage.fail(res);
+    }
+    ROWS = res.rows || [];
+    paint();
+  });
+}
+
+function paint() {
+  var pr = document.getElementById('fProject').value;
+  var t  = document.getElementById('fText').value.trim();
+  var list = ROWS.filter(function (x) {
+    if (pr && x.project !== pr) return false;
+    if (t && [x.person, x.job, x.center, x.project].join(' ').indexOf(t) < 0) return false;
+    return true;
+  });
+
+  var total = list.reduce(function (a, x) { return a + x.total; }, 0);
+  var top = list.filter(function (x) { return x.total > 0; })[0];
+  document.getElementById('kTotal').textContent = total;
+  document.getElementById('kTop').textContent = top ? top.person : '—';
+  document.getElementById('kTopN').textContent = top ? top.total + ' إدخال' : 'لا إدخالات';
+  document.getElementById('kIdle').textContent = list.filter(function (x) { return !x.total; }).length;
+
+  if (!list.length) {
+    document.getElementById('rows').innerHTML = '<tr><td colspan="10" class="td-empty">لا مستخدمين مطابقين.</td></tr>';
+    return;
+  }
+
+  document.getElementById('rows').innerHTML = list.map(function (x) {
+    var c = function (kind) {
+      var n = x[kind];
+      return '<td>' + (n
+        ? '<span class="cell-link" onclick="detail(\'' + esc(x.person) + '\',\'' + kind + '\')">' + n + '</span>'
+        : '<span class="hint" style="margin:0">—</span>') + '</td>';
+    };
+    return '<tr>' +
+      '<td style="font-weight:800">' + esc(x.person) +
+        '<div class="hint" style="margin:2px 0 0">' + esc([x.job, x.project || x.center].filter(Boolean).join(' · ') || '—') + '</div></td>' +
+      c('violations') + c('readiness') + c('tasks_created') + c('tasks_done') +
+      c('files') + c('new_hires') + c('resignations') + c('suggestions') +
+      '<td style="font-weight:900;color:' + (x.total ? 'var(--brand-primary)' : 'var(--text-muted)') + '">' + x.total + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+/** تفاصيل بند واحد لمستخدم واحد */
+function detail(person, kind) {
+  var r = range();
+  Swal.fire({
+    title: KINDS[kind] + ' — ' + person,
+    html: '<div class="hint">جارٍ التحميل…</div>',
+    width: 760, showConfirmButton: false, showCloseButton: true,
+    didOpen: function () {
+      Mirage.api('achievements_detail', { person: person, kind: kind, from: r.from, to: r.to })
+        .then(function (res) {
+          var box = Swal.getHtmlContainer();
+          if (res.status !== 'success') { box.innerHTML = '<div class="hint">' + esc(res.message) + '</div>'; return; }
+          var rows = res.rows || [];
+          box.innerHTML = '<div class="hint" style="margin:0 0 10px">' + esc(r.text) + ' — ' + rows.length + ' سجل</div>' +
+            (rows.length
+              ? '<div class="table-wrap" style="max-height:52vh;overflow:auto"><table><thead><tr>' +
+                '<th>الرقم</th><th>التاريخ</th><th>البيان</th><th>تفاصيل</th></tr></thead><tbody>' +
+                rows.map(function (x) {
+                  return '<tr><td style="font-weight:800;white-space:nowrap">' + esc(x.ref) + '</td>' +
+                    '<td style="white-space:nowrap" dir="ltr">' + esc(x.at) + '</td>' +
+                    '<td style="text-align:right">' + esc(x.title) + '</td>' +
+                    '<td style="text-align:right">' + esc(x.info) + '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+              : '<div class="empty" style="padding:20px">لا سجلات في هذه الفترة.</div>');
+        });
+    }
+  });
+}
+</script>
+</body>
+</html>

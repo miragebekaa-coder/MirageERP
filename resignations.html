@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>ترك العمل | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <div class="alert alert-info" id="routeNote" style="display:none">جارٍ قراءة المسار…</div>
+
+  <form id="lForm" novalidate>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>العامل/ة والتاريخ</h2><p>العامل/ة من قائمة موظفي المشروع في بيانات الموظفين</p></div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="project">اسم المشروع <span class="req">*</span></label>
+          <select id="project" required><option value="">جارٍ التحميل…</option></select>
+          <div class="hint" id="projectNote"></div>
+        </div>
+        <div class="field">
+          <label for="leave_date">تاريخ ترك العمل <span class="req">*</span></label>
+          <input type="date" id="leave_date" required>
+        </div>
+        <div class="field">
+          <label for="worker">اسم وشهرة العامل/ة <span class="req">*</span></label>
+          <select id="worker" required><option value="">اختر المشروع أولاً…</option></select>
+          <div class="hint" id="empHint">غير موجود في القائمة؟ أضفه أولاً من «بيانات الموظفين» أو «موظف جديد».</div>
+        </div>
+        <div class="field">
+          <label for="probation">موظف جديد (تحت التجربة)</label>
+          <input type="text" id="probation" readonly value="—">
+          <div class="hint" id="probationHint">يُحسب تلقائياً: أقل من ثلاثة أشهر بين تاريخ التوظيف وتاريخ ترك العمل</div>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label for="reason">سبب ترك العمل <span class="req">*</span></label>
+          <input type="text" id="reason" list="reasonList" required maxlength="200"
+                 placeholder="اختر من القائمة أو اكتب السبب">
+          <datalist id="reasonList">
+            <option value="استقالة"></option>
+            <option value="سفر"></option>
+            <option value="انتهاء العقد"></option>
+            <option value="الانتقال إلى عمل آخر"></option>
+            <option value="ظروف صحية"></option>
+            <option value="ظروف عائلية"></option>
+            <option value="فصل"></option>
+            <option value="انقطاع عن العمل"></option>
+          </datalist>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>التسليم والإنذار</h2><p>أجب عن الأسئلة الثلاثة كلها</p></div></div>
+
+      <div class="field">
+        <label>هل أتم/ت فترة الإنذار؟ <span class="req">*</span></label>
+        <div class="yn"><label><input type="radio" name="notice_done" value="1"> نعم</label>
+                        <label><input type="radio" name="notice_done" value="0"> لا</label></div>
+      </div>
+      <div class="field">
+        <label>هل سلّم/ت زي العمل؟ <span class="req">*</span></label>
+        <div class="yn"><label><input type="radio" name="uniform_returned" value="1"> نعم</label>
+                        <label><input type="radio" name="uniform_returned" value="0"> لا</label></div>
+      </div>
+      <div class="field">
+        <label>هل سلّم/ت بطاقة التعريف؟ <span class="req">*</span></label>
+        <div class="yn"><label><input type="radio" name="card_returned" value="1"> نعم</label>
+                        <label><input type="radio" name="card_returned" value="0"> لا</label></div>
+      </div>
+
+      <div class="field">
+        <label for="notes">ملاحظات</label>
+        <textarea id="notes" rows="2" maxlength="1000" placeholder="تفاصيل إضافية إن وُجدت"></textarea>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary" id="sendBtn">
+        <span class="btn-text">حفظ نموذج ترك العمل</span><span class="spinner"></span>
+      </button>
+      <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>تاركو العمل هذا الشهر</h2><p>في المشاريع التي تراها</p></div>
+      <span class="badge-pill" id="recentCount">—</span>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>التاريخ</th><th>المشروع</th><th>الاسم</th><th>تحت التجربة</th><th>السبب</th><th>الإنذار</th><th>الزي</th><th>البطاقة</th></tr></thead>
+      <tbody id="recent"><tr><td colspan="8" class="td-empty">جارٍ التحميل…</td></tr></tbody>
+    </table></div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var EMPS = [];
+
+var u = Mirage.boot({
+  page: 'resignations',
+  title: 'ترك العمل',
+  sub: 'توثيق ترك العامل/ة للعمل، ويُحسب تلقائياً في تقرير الجهوزية'
+});
+
+if (u) {
+  document.getElementById('leave_date').value = Mirage.today();
+
+  Mirage.lists({ employees: true }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.fillProjectScope('project', res, { single: true });
+    EMPS = (res.employees || []).filter(function (e) { return e.state !== 'منتهي الخدمة'; });
+    fillEmployees();
+  });
+
+  // المسار يراه مدير النظام وحده
+  Mirage.routeNote('routeNote', {
+    form: 'ترك_العمل',
+    intro: 'يُشعَر بهذا النموذج ويطّلع عليه:'
+  });
+
+  document.getElementById('project').addEventListener('change', fillEmployees);
+  document.getElementById('worker').addEventListener('change', showProbation);
+  document.getElementById('leave_date').addEventListener('change', showProbation);
+
+  loadRecent();
+
+  document.getElementById('lForm').onsubmit = function (e) {
+    e.preventDefault();
+    var v = values();
+
+    // التحقق الأول هنا، والثاني في طبقة الاتصال، والثالث في قاعدة البيانات
+    if (!v.project)     return focusNote('project', 'اختر اسم المشروع');
+    if (!v.emp_id)      return focusNote('worker', 'اختر العامل/ة من قائمة موظفي المشروع');
+    if (!v.leave_date)  return focusNote('leave_date', 'حدّد تاريخ ترك العمل');
+    if (!v.reason)      return focusNote('reason', 'اكتب سبب ترك العمل');
+    if (v.notice_done === undefined || v.uniform_returned === undefined || v.card_returned === undefined) {
+      return Mirage.note('أجب عن الأسئلة الثلاثة: فترة الإنذار، الزي، بطاقة التعريف');
+    }
+
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+    Mirage.api('resignation_new', v).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('رقم النموذج ' + res.id + '. أصبح ' + (res.name || v.worker_name) +
+        ' «منتهي الخدمة» في بيانات الموظفين' + (res.probation ? ' (ترك خلال فترة التجربة)' : '') + '.' +
+        (Mirage.isAdmin() && res.route.length ? ' وأُشعِر: ' + res.route.join('، ') : ''), 'حُفظ النموذج');
+      document.getElementById('lForm').reset();
+      document.getElementById('leave_date').value = Mirage.today();
+      Mirage.clearListCache();
+      EMPS = EMPS.filter(function (e) { return e.id !== v.emp_id; });
+      fillEmployees();
+      loadRecent();
+    });
+  };
+}
+
+function values() {
+  var pick = function (n) {
+    var r = document.querySelector('input[name="' + n + '"]:checked');
+    return r ? r.value : undefined;
+  };
+  var emp = current();
+  return {
+    project: document.getElementById('project').value,
+    emp_id: emp ? emp.id : '',
+    worker_name: emp ? emp.name : '',
+    leave_date: document.getElementById('leave_date').value,
+    reason: document.getElementById('reason').value.trim(),
+    notice_done: pick('notice_done'),
+    uniform_returned: pick('uniform_returned'),
+    card_returned: pick('card_returned'),
+    notes: document.getElementById('notes').value.trim()
+  };
+}
+
+function focusNote(id, msg) {
+  document.getElementById(id).focus();
+  return Mirage.note(msg);
+}
+
+function current() {
+  var id = document.getElementById('worker').value;
+  return EMPS.filter(function (e) { return e.id === id; })[0] || null;
+}
+
+/** موظفو المشروع المختار ممن لم تنتهِ خدمتهم — بحسب نطاق المستخدم */
+function fillEmployees() {
+  var p = document.getElementById('project').value;
+  var sel = document.getElementById('worker');
+  if (!p) { sel.innerHTML = '<option value="">اختر المشروع أولاً…</option>'; showProbation(); return; }
+  var list = EMPS.filter(function (e) { return e.project === p; });
+  sel.innerHTML = list.length
+    ? '<option value="">اختر العامل/ة… (' + list.length + ')</option>' + list.map(function (e) {
+        return '<option value="' + esc(e.id) + '">' + esc(e.name) + ' — ' + esc(e.job || 'بلا وظيفة') +
+          ' (' + esc(e.id) + ')' + (Mirage.onProbation(e.hire_date) ? ' · تحت التجربة' : '') + '</option>';
+      }).join('')
+    : '<option value="">لا موظفين نشطين في هذا المشروع</option>';
+  showProbation();
+}
+
+/** هل هو موظف جديد تحت التجربة في تاريخ ترك العمل؟ */
+function showProbation() {
+  var e = current(), box = document.getElementById('probation'), hint = document.getElementById('probationHint');
+  box.style.color = ''; box.style.fontWeight = '';
+  if (!e) {
+    box.value = '—';
+    hint.textContent = 'يُحسب تلقائياً: أقل من ثلاثة أشهر بين تاريخ التوظيف وتاريخ ترك العمل';
+    return;
+  }
+  if (!e.hire_date) {
+    box.value = 'غير معروف';
+    hint.textContent = 'لا تاريخ توظيف لهذا الموظف في بيانات الموظفين — أضفه هناك ليُحسب.';
+    return;
+  }
+  var on = Mirage.onProbation(e.hire_date, document.getElementById('leave_date').value);
+  box.value = on ? 'نعم — تحت التجربة' : 'لا';
+  box.style.color = on ? '#7C3AED' : '';
+  box.style.fontWeight = on ? '800' : '';
+  hint.textContent = 'تاريخ التوظيف ' + Mirage.ltr(e.hire_date) + '، وتنتهي التجربة في ' + Mirage.ltr(Mirage.probationEnd(e.hire_date));
+}
+
+function loadRecent() {
+  Mirage.api('movement_list', { month: Mirage.thisMonth() }).then(function (res) {
+    var box = document.getElementById('recent');
+    if (res.status !== 'success') {
+      box.innerHTML = '<tr><td colspan="8" class="td-empty">' + esc(res.message) + '</td></tr>';
+      return;
+    }
+    var list = res.left || [];
+    document.getElementById('recentCount').textContent = list.length;
+    var yn = function (v) { return '<span class="tag tag-' + (v === 'نعم' ? 'green' : 'red') + '">' + v + '</span>'; };
+    box.innerHTML = list.length
+      ? list.map(function (x) {
+          return '<tr><td style="white-space:nowrap">' + esc(x.date) + Mirage.entryLine(x) + '</td><td>' + esc(x.project) + '</td>' +
+            '<td style="font-weight:800">' + esc(x.name) + '</td>' +
+            '<td>' + (x.probation ? '<span class="tag tag-purple">نعم</span>' : 'لا') + '</td>' +
+            '<td>' + esc(x.reason) + '</td>' +
+            '<td>' + yn(x.notice) + '</td><td>' + yn(x.uniform) + '</td><td>' + yn(x.card) + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="8" class="td-empty">لا أحد ترك العمل هذا الشهر.</td></tr>';
+  });
+}
+</script>
+</body>
+</html>

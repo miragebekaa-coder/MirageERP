@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>الإشعارات | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="tabs">
+    <button class="tab active" data-tab="inbox">الوارد</button>
+    <button class="tab" data-tab="send" id="tabSend" style="display:none">إرسال إشعار</button>
+    <button class="tab" data-tab="log" id="tabLog" style="display:none">سجل ما أرسلتُه</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-inbox">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>📲 إشعارات الهاتف</h2><p>تصلك على هذا الجهاز حتى والتطبيق مغلق — تُفعَّل لكل جهاز على حدة</p></div>
+      </div>
+      <div id="pushCard"><div class="hint">جارٍ الفحص…</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>إشعاراتي</h2><p>اضغط أي إشعار لقراءته كاملاً وفتح سجلّه</p></div>
+        <button class="btn btn-ghost btn-sm" id="readAll">تحديد الكل كمقروء</button>
+      </div>
+
+      <div class="grid-4 filters">
+        <div class="field"><label for="fRead">الحالة</label>
+          <select id="fRead">
+            <option value="all">الكل</option>
+            <option value="unread">غير المقروءة</option>
+            <option value="read">المقروءة</option>
+          </select>
+        </div>
+        <div class="field" id="senderWrap" style="display:none"><label for="fSender">المُرسِل</label><select id="fSender"></select></div>
+        <div class="field"><label for="fYear">السنة</label><select id="fYear"></select></div>
+        <div class="field"><label for="fMonth">الشهر</label><select id="fMonth"></select></div>
+      </div>
+      <div class="hint" id="countNote" style="margin:0 0 10px"></div>
+
+      <div id="inbox"><div class="empty">جارٍ التحميل…</div></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-send">
+    <div class="card broadcast-card">
+      <div class="card-head">
+        <div><h2>إرسال إشعار</h2><p id="sendSub">لفريقك: مباشرة أو عبر مسؤولين وسيطين</p></div>
+      </div>
+      <div id="composer"></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-log">
+    <div class="card">
+      <div class="card-head"><div><h2>سجل الإشعارات المرسلة</h2><p>بحسب العنوان والتاريخ والمضمون والمشروع</p></div></div>
+      <div id="noticeLog"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var ITEMS = [], LOG = null;
+var ISADMIN = Mirage.isAdmin();     // سجلّ «من أرسل ومتى» لمدير النظام وحده
+
+var u = Mirage.boot({
+  page: 'notifications',
+  title: 'الإشعارات',
+  sub: 'صندوق الوارد، والإرسال لمن مُنح الصلاحية'
+});
+
+if (u) {
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.onclick = function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+      document.querySelectorAll('.tab-panel').forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+      document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+    };
+  });
+
+  Mirage.push.card('pushCard');
+  // «من أرسل الإشعار ومتى» سجلّ إداري: يراه مدير النظام وحده
+  if (Mirage.isAdmin()) document.getElementById('senderWrap').style.display = '';
+  ['fRead', 'fSender', 'fYear', 'fMonth'].forEach(function (id) {
+    document.getElementById(id).onchange = paint;
+  });
+  document.getElementById('readAll').onclick = function () {
+    Mirage.api('notifications_read', {}).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.toast('حُدِّدت كلها مقروءة');
+      Mirage.refreshBell();
+      load();
+    });
+  };
+  load();
+
+  // تبويبا الإرسال والسجل يظهران لمن يملك الصلاحية فعلاً، بحسب قاعدة البيانات لا الجلسة
+  Mirage.api('notice_scope', {}).then(function (res) {
+    if (res.status !== 'success' || !res.can_send) return;
+    document.getElementById('tabSend').style.display = '';
+    document.getElementById('tabLog').style.display = '';
+    if (res.full) document.getElementById('sendSub').textContent =
+      'لكل المستخدمين، أو لأقسام بكاملها، أو لمشاريع، أو لأشخاص بأعينهم';
+    LOG = Mirage.noticeLog('noticeLog');
+    Mirage.notifyComposer('composer', { onSent: function () { if (LOG) LOG.reload(); } });
+  });
+}
+
+function load() {
+  Mirage.api('notifications_list', { limit: 400 }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    ITEMS = res.items || [];
+    fillFilters();
+    paint();
+  });
+}
+
+/** قوائم المُرسِل والسنة والشهر تُبنى ممّا وصلك فعلاً */
+function fillFilters() {
+  var senders = [], years = [];
+  if (!ISADMIN) document.getElementById('fSender').value = '';
+  ITEMS.forEach(function (n) {
+    if (n.sender && senders.indexOf(n.sender) < 0) senders.push(n.sender);
+    if (n.year && years.indexOf(n.year) < 0) years.push(n.year);
+  });
+  senders.sort();
+  years.sort().reverse();
+
+  var keep = {
+    s: document.getElementById('fSender').value,
+    y: document.getElementById('fYear').value,
+    m: document.getElementById('fMonth').value
+  };
+  Mirage.fillSelect('fSender', senders.map(function (n) { return { value: n, text: n }; }), 'كل المُرسِلين', '');
+  Mirage.fillSelect('fYear', years.map(function (y) { return { value: y, text: y }; }), 'كل السنوات', '');
+  Mirage.fillSelect('fMonth', Mirage.MONTHS.map(function (t, i) {
+    return { value: ('0' + (i + 1)).slice(-2), text: t };
+  }), 'كل الأشهر', '');
+  if (keep.s) document.getElementById('fSender').value = keep.s;
+  if (keep.y) document.getElementById('fYear').value = keep.y;
+  if (keep.m) document.getElementById('fMonth').value = keep.m;
+}
+
+function paint() {
+  var f  = document.getElementById('fRead').value;
+  var sn = ISADMIN ? document.getElementById('fSender').value : '';
+  var yr = document.getElementById('fYear').value;
+  var mo = document.getElementById('fMonth').value;
+
+  var list = ITEMS.filter(function (n) {
+    if (f === 'unread' && n.read) return false;
+    if (f === 'read' && !n.read) return false;
+    if (sn && n.sender !== sn) return false;
+    if (yr && n.year !== yr) return false;
+    if (mo && n.month.slice(5) !== mo) return false;
+    return true;
+  });
+
+  document.getElementById('countNote').textContent =
+    list.length + ' إشعار من أصل ' + ITEMS.length + (list.length === ITEMS.length ? '' : ' (بعد التصفية)');
+
+  var box = document.getElementById('inbox');
+  if (!list.length) {
+    box.innerHTML = '<div class="empty"><span class="ico">🔔</span><b>لا إشعارات</b>' +
+      (ITEMS.length ? 'لا إشعار يطابق هذه التصفية.' : 'لم يصلك أي إشعار بعد.') + '</div>';
+    return;
+  }
+
+  box.innerHTML = list.map(function (n) {
+    return '<div class="task-card note-item" style="border-right-color:' + COLOR(n.kind) +
+      (n.read ? ';opacity:.85' : '') + '" onclick="openOne(' + n.id + ')">' +
+      '<div class="desc">' + esc(n.title) + (n.read ? '' : ' <span class="tag tag-red">جديد</span>') + '</div>' +
+      (n.body ? '<div class="note-body">' + esc(n.body) + '</div>' : '') +
+      '<div class="meta">' +
+        (ISADMIN ? '<span>👤 ' + esc(n.sender) + '</span>' : '') +
+        '<span>🕒 <span dir="ltr">' + esc(n.at) + '</span></span>' +
+        '<span class="cell-link">فتح الإشعار</span></div>' +
+      '</div>';
+  }).join('');
+}
+
+function COLOR(kind) {
+  return { completed: '#10B981', note: '#2563EB', route: '#F59E0B',
+           assigned: '#8B5CF6', file: '#0EA5E9', suggestion: '#D97706' }[kind] || '#64748B';
+}
+
+/** فتح إشعار واحد كاملاً، مع زر يفتح السجل المرتبط به */
+function openOne(id) {
+  var n = ITEMS.filter(function (x) { return x.id === id; })[0];
+  if (!n) return;
+  var LINK = {
+    violation: { page: 'dashboard.html', text: 'فتح البلاغ' },
+    followup:  { page: 'my_tasks.html',  text: 'فتح المهمة' },
+    المتابعات: { page: 'my_tasks.html',  text: 'فتح المهمة' },
+    document:  { page: 'my_files.html',  text: 'فتح الملف' },
+    suggestion:{ page: 'suggestions.html', text: 'فتح الاقتراح' }
+  }[n.ref_type];
+
+  Swal.fire({
+    title: n.title,
+    html: '<div style="text-align:right">' +
+      (n.body ? '<div style="font-size:14px;line-height:2;white-space:pre-wrap">' + esc(n.body) + '</div>' : '') +
+      '<div class="hint" style="margin-top:14px">' +
+      (ISADMIN ? '👤 ' + esc(n.sender) + ' · ' : '') +
+      '🕒 <span dir="ltr">' + esc(n.at) + '</span></div></div>',
+    showCancelButton: !!LINK,
+    confirmButtonText: LINK ? LINK.text : 'حسناً',
+    cancelButtonText: 'إغلاق',
+    confirmButtonColor: '#2563EB', cancelButtonColor: '#64748B',
+    width: 620
+  }).then(function (r) {
+    if (LINK && r.isConfirmed) location.href = LINK.page;
+  });
+
+  if (!n.read) {
+    n.read = true;
+    Mirage.api('notification_open', { id: id }).then(function () {
+      Mirage.refreshBell();
+      paint();
+    });
+  }
+}
+</script>
+</body>
+</html>

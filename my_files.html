@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>ملفاتي | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="grid-3">
+    <div class="stat is-success"><div class="label">واردة إليّ</div><div class="value" id="kIn">—</div><div class="foot">ملفات أُرسلت لك بالاسم</div></div>
+    <div class="stat"><div class="label">أرسلتُها</div><div class="value" id="kOut">—</div><div class="foot">ولا يفتحها إلا من اخترتهم</div></div>
+    <div class="stat is-warn"><div class="label">بانتظار تمريرك</div><div class="value" id="kFwd">—</div><div class="foot">ملفات من يتبعونك</div></div>
+  </div>
+
+  <div class="card" id="fwdCard" style="display:none">
+    <div class="card-head">
+      <div><h2>⏳ بانتظار تمريرك</h2>
+      <p>ملفات أرسلها من يتبعونك: اطّلع عليها، اكتب تعليقك، ثم مرّرها إلى الجهات المحددة</p></div>
+      <span class="badge-pill" id="fwdCount">—</span>
+    </div>
+    <div id="fwdRows"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>🗂️ ملفاتي</h2><p>الفتح والتنزيل برابط مؤقت لا يُنشأ إلا لمن يحقّ له الملف</p></div>
+      <button class="btn btn-primary btn-sm" onclick="location.href='upload.html'" id="sendNew">+ إرسال ملف</button>
+    </div>
+
+    <div class="grid-3 filters">
+      <div class="field"><label for="fBox">الملفات</label>
+        <select id="fBox">
+          <option value="in">الواردة إليّ</option>
+          <option value="out">ما أرسلتُه</option>
+          <option value="fwd">بانتظار تمريري</option>
+          <option value="other">أخرى أراها</option>
+          <option value="all">الكل</option>
+        </select>
+      </div>
+      <div class="field"><label for="fMonth">الشهر</label><select id="fMonth"></select></div>
+      <div class="field"><label for="fText">بحث</label>
+        <input type="search" id="fText" placeholder="اسم الملف، الموضوع، المشروع، الشخص…"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>الرقم</th><th>التاريخ</th><th>الملف</th><th>الموضوع</th><th>المشروع</th>
+          <th id="thWho">من</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7" class="td-empty">جارٍ التحميل…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var FILES = [];
+
+var u = Mirage.boot({
+  page: 'my_files',
+  title: 'ملفاتي',
+  sub: 'الملفات المرسلة إليك بالاسم، وما أرسلته أنت'
+});
+
+if (u) {
+  if (!Mirage.can('upload')) document.getElementById('sendNew').style.display = 'none';
+  Mirage.fillSelect('fMonth', Mirage.monthOptions(24), 'كل الأشهر', '');
+  document.getElementById('fMonth').onchange = load;
+  document.getElementById('fBox').onchange = paint;
+  document.getElementById('fText').oninput = paint;
+  load();
+}
+
+function load() {
+  Mirage.api('files_list', { month: document.getElementById('fMonth').value, limit: 500 }).then(function (res) {
+    if (res.status !== 'success') {
+      document.getElementById('rows').innerHTML = '<tr><td colspan="7" class="td-empty">' + esc(res.message) + '</td></tr>';
+      return;
+    }
+    FILES = res.files || [];
+    paint();
+  });
+}
+
+/** بطاقة الملفات التي تنتظر تمرير المستخدم بصفته مسؤولاً مباشراً */
+function paintForward(list) {
+  var card = document.getElementById('fwdCard');
+  if (!list.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  document.getElementById('fwdCount').textContent = list.length + ' ملف';
+  document.getElementById('fwdRows').innerHTML = list.map(function (f) {
+    return '<div class="sug-card">' +
+      '<div class="sug-top">' +
+        '<span class="sug-title">' + esc(f.file_name || 'ملف') + '</span>' +
+        '<span class="tag tag-yellow">بانتظار تمريرك</span>' +
+        '<span class="tag tag-gray">' + esc(f.id) + '</span>' +
+      '</div>' +
+      '<div class="sug-meta">👤 من ' + esc(f.sender) + ' · 📨 إلى ' + esc(f.readers.join('، ')) +
+        (f.subject ? ' · ' + esc(f.subject) : '') + (f.project ? ' · ' + esc(f.project) : '') +
+        ' · 🕒 <span dir="ltr">' + esc(f.date) + '</span></div>' +
+      (f.notes ? '<div class="sug-body">' + esc(f.notes) + '</div>' : '') +
+      (f.note ? '<div class="sug-note"><b>تعليقك:</b> ' + esc(f.note) + '</div>' : '') +
+      '<div class="btn-row">' + Mirage.fileButtons(f) +
+        '<button class="btn btn-primary btn-sm" onclick="forwardOne(\'' + esc(f.id) + '\')">التعليق والتمرير</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+/** تعليق المسؤول المباشر ثم التمرير — أو حفظ التعليق وحده */
+function forwardOne(code) {
+  var f = FILES.filter(function (x) { return x.id === code; })[0];
+  if (!f) return;
+  var id = Mirage.rawId ? Mirage.rawId(code) : parseInt(String(code).split('-').pop(), 10);
+
+  Swal.fire({
+    title: 'تمرير الملف إلى ' + f.readers.join('، '),
+    html: '<div style="text-align:right">' +
+      '<div class="hint" style="margin:0 0 10px">الملف: <b>' + esc(f.file_name || '—') +
+      '</b> — من ' + esc(f.sender) + '</div>' +
+      '<label class="swal-lbl">تعليقك على الملف (يراه المُرسِل — ومطلوب عند عدم التمرير)</label>' +
+      '<textarea id="swNote" class="swal2-textarea" style="width:100%;margin:6px 0 0" rows="4">' +
+      esc(f.note) + '</textarea></div>',
+    showCancelButton: true, showDenyButton: true,
+    confirmButtonText: 'تمرير إلى الجهة', denyButtonText: 'عدم التمرير', cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#2563EB', denyButtonColor: '#DC2626', cancelButtonColor: '#94A3B8',
+    width: 640, focusConfirm: false
+  }).then(function (r) {
+    if (!r.isConfirmed && !r.isDenied) return;
+    var note = document.getElementById('swNote') ? document.getElementById('swNote').value.trim() : '';
+
+    if (r.isDenied) {
+      if (!note) return Mirage.note('اكتب سبب عدم التمرير ليعرفه المُرسِل.', 'السبب مطلوب');
+      return Mirage.api('document_hold', { id: id, note: note }).then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.ok('لن يصل الملف إلى ' + f.readers.join('، ') + '، وأُشعِر المُرسِل بالسبب.', 'لم يُمرَّر الملف');
+        load();
+      });
+    }
+
+    Mirage.api('document_forward', { id: id, note: note, send: true }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('وصل الملف إلى: ' + f.readers.join('، ') + '، وأُشعِروا به.', 'مُرِّر الملف');
+      load();
+    });
+  });
+}
+
+function paint() {
+  var box = document.getElementById('fBox').value;
+  var t = document.getElementById('fText').value.trim();
+  var inbox = FILES.filter(function (f) { return f.to_me; });
+  var out = FILES.filter(function (f) { return f.mine; });
+  var fwd = FILES.filter(function (f) { return f.to_forward; });
+  var other = FILES.filter(function (f) { return !f.to_me && !f.mine && !f.to_forward; });
+  document.getElementById('kIn').textContent = inbox.length;
+  document.getElementById('kOut').textContent = out.length;
+  document.getElementById('kFwd').textContent = fwd.length;
+
+  paintForward(fwd);
+
+  var list = box === 'in' ? inbox : box === 'out' ? out : box === 'fwd' ? fwd
+           : box === 'other' ? other : FILES;
+  if (t) {
+    list = list.filter(function (f) {
+      return [f.file_name, f.subject, f.project, f.sender, f.recipient, f.id, (f.readers || []).join(' ')].join(' ').indexOf(t) > -1;
+    });
+  }
+  document.getElementById('thWho').textContent = box === 'out' ? 'يفتحه' : box === 'in' ? 'من' : 'من ← إلى';
+
+  document.getElementById('rows').innerHTML = list.length
+    ? list.map(function (f) {
+        var who = box === 'out'
+          ? (f.restricted ? '🔒 ' + esc(f.readers.join('، ')) : '—')
+          : box === 'in' ? esc(f.sender)
+          : esc(f.sender) + ' ← ' + (f.restricted ? esc(f.readers.join('، ')) : esc(f.recipient || '—'));
+        return '<tr><td style="font-weight:800;white-space:nowrap">' + esc(f.id) + Mirage.entryLine(f) + '</td>' +
+          '<td style="white-space:nowrap">' + esc(f.date) + '</td>' +
+          '<td style="font-weight:800">' + esc(f.file_name || '—') +
+            (f.waiting ? ' <span class="tag tag-yellow">بانتظار ' + esc(f.manager) + '</span>' : '') +
+            (f.held ? ' <span class="tag tag-red">لم يُمرَّر</span>' : '') +
+            (f.note ? '<div class="hint" style="margin:2px 0 0">💬 ' + esc(f.note) + '</div>' : '') +
+            (f.notes ? '<div class="hint" style="margin:2px 0 0">' + esc(f.notes) + '</div>' : '') + '</td>' +
+          '<td>' + esc(f.subject || '—') + '</td>' +
+          '<td>' + esc(f.project || '—') + '</td>' +
+          '<td>' + who + '</td>' +
+          '<td>' + Mirage.fileButtons(f) + '</td></tr>';
+      }).join('')
+    : '<tr><td colspan="7" class="td-empty">' +
+      (box === 'in' ? 'لم يصلك أي ملف' : box === 'out' ? 'لم ترسل أي ملف'
+       : box === 'fwd' ? 'لا ملف بانتظار تمريرك' : 'لا ملفات') +
+      (document.getElementById('fMonth').value ? ' في هذا الشهر' : '') + '.</td></tr>';
+}
+</script>
+</body>
+</html>

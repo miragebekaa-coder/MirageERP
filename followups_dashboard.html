@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>متابعة المهام | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="grid-4">
+    <div class="stat"><div class="label">إجمالي المهام</div><div class="value" id="kAll">—</div></div>
+    <div class="stat is-danger"><div class="label">عالقة</div><div class="value" id="kStuck">—</div><div class="foot">لم تبدأ بعد</div></div>
+    <div class="stat is-warn"><div class="label">قيد التنفيذ</div><div class="value" id="kDoing">—</div></div>
+    <div class="stat is-success"><div class="label">أنجزت</div><div class="value" id="kDone">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>تقرير التكليفات للإدارة</h2>
+      <p>أداء كل مُكلَّف: ما أنجزه وما بقي عليه</p></div>
+      <button class="btn btn-ghost btn-sm" onclick="window.print()">طباعة التقرير</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>المُكلَّف</th><th>إجمالي المهام</th><th>عالقة</th><th>قيد التنفيذ</th>
+          <th>أنجزت</th><th>نسبة الإنجاز</th><th>أقدم مهمة معلّقة</th>
+        </tr></thead>
+        <tbody id="reportRows"><tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:22px">—</td></tr></tbody>
+      </table>
+    </div>
+    <div class="hint" style="margin-top:12px">المهام غير المكلَّفة لأحد تظهر في سطر «بلا تكليف مباشر».</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>المهام والمتابعات</h2>
+      <p id="scopeNote">—</p>
+      <p id="fProjectNote" style="font-size:12.5px;color:var(--text-muted);margin:4px 0 0"></p></div>
+      <div class="btn-row">
+        <select id="fProject" style="width:210px"><option value="all">جارٍ التحميل…</option></select>
+        <select id="fState" style="width:170px">
+          <option value="all">كل الحالات</option>
+          <option value="عالقة">عالقة</option>
+          <option value="قيد التنفيذ">قيد التنفيذ</option>
+          <option value="أنجزت">أنجزت</option>
+        </select>
+        <button class="btn btn-followup btn-sm" id="loadBtn" onclick="load()">
+          <span class="btn-text">تحديث</span><span class="spinner"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>الرقم</th><th>المشروع</th><th>المهمة</th><th>الجهة المعنية</th>
+          <th>المُكلف</th><th>الأهمية</th><th>الحالة</th><th>آخر تحديث</th><th></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:26px">جارٍ التحميل…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<div class="modal-back" id="back">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="mTitle">المهمة</h3>
+      <button onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<script>
+var DATA = [], TEAM = [], ENTITIES = [];
+
+var u = Mirage.boot({
+  page: 'followups_dashboard',
+  title: 'إدارة وتوجيه المتابعات',
+  sub: 'متابعة الأعمال العالقة وتوجيهها وتحديث حالتها'
+});
+
+if (u) {
+  Mirage.lists().then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    ENTITIES = res.entities || [];
+    TEAM = res.team || [];
+    Mirage.fillProjectScope('fProject', res);
+    load();
+  });
+  document.getElementById('fState').onchange = load;
+  document.getElementById('fProject').onchange = load;
+}
+
+function load() {
+  var btn = document.getElementById('loadBtn');
+  Mirage.busy(btn, true);
+  Mirage.api('followups_list', {
+    user: u.realName,
+    project: document.getElementById('fProject').value,
+    state: document.getElementById('fState').value
+  }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    DATA = res.followups || [];
+    document.getElementById('scopeNote').textContent = res.can_see_all
+      ? 'أنت ترى كل مهام الشركة'
+      : 'أنت ترى مهام فريقك والمهام المكلَّف بها';
+    render();
+  });
+}
+
+function render() {
+  document.getElementById('kAll').textContent   = DATA.length;
+  document.getElementById('kStuck').textContent = DATA.filter(function (f) { return f.state === 'عالقة'; }).length;
+  document.getElementById('kDoing').textContent = DATA.filter(function (f) { return f.state === 'قيد التنفيذ'; }).length;
+  document.getElementById('kDone').textContent  = DATA.filter(function (f) { return f.state === 'أنجزت'; }).length;
+
+  paintReport();
+
+  document.getElementById('rows').innerHTML = DATA.length
+    ? DATA.map(function (f) {
+        var urgent = f.classification === 'عاجلة' && f.state !== 'أنجزت';
+        return '<tr' + (urgent ? ' style="background:#FEF2F2"' : '') + '>' +
+          '<td style="font-weight:800">' + esc(f.id) + Mirage.entryLine(f) + '</td>' +
+          '<td>' + esc(f.project || '—') + '</td>' +
+          '<td style="max-width:280px"><span class="cell-link" onclick="openOne(\'' + esc(f.id) + '\')">' +
+            esc(f.description.length > 70 ? f.description.slice(0, 70) + '…' : f.description) + '</span></td>' +
+          '<td>' + esc(f.entity || '—') + '</td>' +
+          '<td>' + esc(f.assignee || '—') + '</td>' +
+          '<td>' + Mirage.tag(f.classification) + '</td>' +
+          '<td>' + Mirage.tag(f.state) + '</td>' +
+          '<td style="white-space:nowrap">' + esc(f.updated) + '</td>' +
+          '<td><button class="btn btn-ghost btn-sm" onclick="openOne(\'' + esc(f.id) + '\')">توجيه</button></td>' +
+          '</tr>';
+      }).join('')
+    : '<tr><td colspan="9" style="text-align:center;padding:34px;color:var(--text-muted)">' +
+      'لا مهام في هذا النطاق.</td></tr>';
+}
+
+/** تقرير الإنجاز لكل مُكلَّف */
+function paintReport() {
+  var by = {};
+  DATA.forEach(function (f) {
+    var key = f.assignee || 'بلا تكليف مباشر';
+    by[key] = by[key] || { all: 0, stuck: 0, doing: 0, done: 0, oldest: null };
+    var b = by[key];
+    b.all++;
+    if (f.state === 'أنجزت') b.done++;
+    else {
+      if (f.state === 'عالقة') b.stuck++; else b.doing++;
+      if (!b.oldest || f.date < b.oldest) b.oldest = f.date;
+    }
+  });
+
+  var names = Object.keys(by).sort(function (a, b) {
+    return (by[b].all - by[b].done) - (by[a].all - by[a].done);
+  });
+
+  if (!names.length) {
+    document.getElementById('reportRows').innerHTML =
+      '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:26px">لا مهام في هذا النطاق</td></tr>';
+    return;
+  }
+
+  document.getElementById('reportRows').innerHTML = names.map(function (n) {
+    var b = by[n];
+    var pct = b.all ? Math.round(b.done / b.all * 100) : 0;
+    var tone = pct >= 80 ? 'green' : (pct >= 50 ? 'yellow' : 'red');
+    return '<tr>' +
+      '<td style="font-weight:800">' + esc(n) + '</td>' +
+      '<td>' + b.all + '</td>' +
+      '<td style="color:' + (b.stuck ? 'var(--danger)' : 'inherit') + ';font-weight:800">' + b.stuck + '</td>' +
+      '<td>' + b.doing + '</td>' +
+      '<td style="color:var(--success);font-weight:800">' + b.done + '</td>' +
+      '<td><span class="tag tag-' + tone + '">' + pct + '%</span></td>' +
+      '<td style="white-space:nowrap">' + esc(b.oldest || '—') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function openOne(id) {
+  var f = DATA.filter(function (x) { return x.id === id; })[0];
+  if (!f) return;
+
+  document.getElementById('mTitle').textContent = 'مهمة ' + f.id;
+  document.getElementById('mBody').innerHTML =
+    '<div class="grid-2">' +
+      ro('المشروع', f.project) + ro('مُدخل البيانات', f.by) +
+      ro('تاريخ التسجيل', f.date) + ro('آخر تحديث', f.updated) +
+    '</div>' +
+    '<div class="field"><label>وصف المهمة</label>' +
+      '<div style="background:var(--bg-app);border:1px solid var(--border-light);border-radius:var(--radius-md);' +
+      'padding:14px;font-size:13.5px;white-space:pre-wrap">' + esc(f.description) + '</div></div>' +
+    (f.notes ? '<div class="field"><label>ملاحظات مُدخل البيانات</label>' +
+      '<div style="background:var(--bg-app);border:1px solid var(--border-light);border-radius:var(--radius-md);' +
+      'padding:14px;font-size:13.5px;white-space:pre-wrap">' + esc(f.notes) + '</div></div>' : '') +
+    '<hr style="border:0;border-top:1px solid var(--border-light);margin:20px 0">' +
+    '<div class="grid-2">' +
+      '<div class="field"><label for="uState">الحالة</label><select id="uState">' +
+        opt('عالقة', f.state) + opt('قيد التنفيذ', f.state) + opt('أنجزت', f.state) +
+      '</select></div>' +
+      '<div class="field"><label for="uClass">الأهمية</label><select id="uClass">' +
+        opt('عاجلة', f.classification) + opt('مهمة', f.classification) + opt('عادية', f.classification) +
+      '</select></div>' +
+      '<div class="field"><label for="uEntity">الجهة المعنية</label><select id="uEntity">' +
+        ENTITIES.map(function (e) { return opt(e, f.entity); }).join('') +
+      '</select></div>' +
+      '<div class="field"><label for="uAssignee">المُكلف</label><select id="uAssignee">' +
+        '<option value="">بلا تكليف مباشر</option>' +
+        TEAM.map(function (m) { return opt(m.name, f.assignee); }).join('') +
+        (f.assignee && !TEAM.some(function (m) { return m.name === f.assignee; })
+          ? '<option value="' + esc(f.assignee) + '" selected>' + esc(f.assignee) + '</option>' : '') +
+      '</select></div>' +
+    '</div>' +
+    '<div class="field"><label for="uDirection">توجيه الإدارة</label>' +
+      '<textarea id="uDirection" rows="3" placeholder="التعليمات الموجَّهة للجهة المعنية">' + esc(f.direction || '') + '</textarea></div>' +
+    '<div class="btn-row"><button class="btn btn-followup" id="saveBtn" onclick="save(\'' + esc(f.id) + '\')">' +
+      '<span class="btn-text">حفظ التوجيه والتحديث</span><span class="spinner"></span></button>' +
+      '<button class="btn btn-ghost" onclick="closeModal()">إلغاء</button></div>';
+
+  document.getElementById('back').classList.add('open');
+  Mirage.adder('uEntity', 'centers', 'جهة');
+}
+
+function ro(label, value) {
+  return '<div class="field" style="margin-bottom:12px"><label>' + esc(label) + '</label>' +
+         '<input type="text" value="' + esc(value || '—') + '" readonly></div>';
+}
+function opt(v, current) {
+  return '<option value="' + esc(v) + '"' + (v === current ? ' selected' : '') + '>' + esc(v) + '</option>';
+}
+
+function save(id) {
+  var btn = document.getElementById('saveBtn');
+  Mirage.busy(btn, true);
+  Mirage.api('followup_update', {
+    id: id,
+    status: document.getElementById('uState').value,
+    classification: document.getElementById('uClass').value,
+    entity: document.getElementById('uEntity').value,
+    assignee: document.getElementById('uAssignee').value || ' ',
+    direction: document.getElementById('uDirection').value.trim() || ' '
+  }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    closeModal();
+    Mirage.toast('حُفظ التحديث');
+    load();
+  });
+}
+
+function closeModal() { document.getElementById('back').classList.remove('open'); }
+</script>
+</body>
+</html>

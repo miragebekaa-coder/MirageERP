@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>بيانات الموظفين | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2 id="formTitle">إضافة موظف جديد</h2>
+      <p>تاريخ التوظيف يُستخدم في بلاغات المخالفات ومدة الخدمة وفترة التجربة. من يُسجَّل في «موظف جديد» يُضاف هنا تلقائياً.</p></div>
+      <button class="btn btn-ghost btn-sm" id="cancelBtn" onclick="resetForm()" style="display:none">إلغاء التعديل</button>
+    </div>
+
+    <div class="alert alert-info" id="linkNote" style="display:none"></div>
+
+    <form id="empForm">
+      <div class="grid-3">
+        <div class="field">
+          <label for="f_id">الرقم الوظيفي</label>
+          <input type="text" id="f_id" required>
+          <div class="hint">المعرّف الوحيد للموظف، لا يتكرر</div>
+        </div>
+        <div class="field">
+          <label for="f_name">اسم الموظف</label>
+          <input type="text" id="f_name" required>
+        </div>
+        <div class="field">
+          <label for="f_hire">تاريخ التوظيف (بدء العمل الفعلي)</label>
+          <input type="date" id="f_hire" required>
+          <div class="hint" id="f_hireHint">تحت التجربة ثلاثة أشهر من هذا التاريخ</div>
+        </div>
+        <div class="field">
+          <label for="f_training">تاريخ بدء التدريب</label>
+          <input type="date" id="f_training">
+          <div class="hint">تاريخ اليوم تلقائياً عند الإضافة، ويمكن تعديله</div>
+        </div>
+        <div class="field">
+          <label for="f_hours">ساعات العمل اليومية</label>
+          <input type="number" id="f_hours" min="1" max="24" step="0.5" inputmode="decimal" placeholder="مثال: 8">
+          <div class="hint">أرقام فقط، من 1 إلى 24</div>
+        </div>
+        <div class="field">
+          <label for="f_job">الوظيفة</label>
+          <select id="f_job" required></select>
+        </div>
+        <div class="field">
+          <label for="f_project">المشروع</label>
+          <select id="f_project" required></select>
+          <div class="hint" id="f_projectHint"></div>
+        </div>
+        <div class="field">
+          <label for="f_center">المركز</label>
+          <select id="f_center"></select>
+        </div>
+        <div class="field">
+          <label for="f_nat">الجنسية</label>
+          <input type="text" id="f_nat">
+        </div>
+        <div class="field">
+          <label for="f_nid">رقم الهوية أو الإقامة</label>
+          <input type="text" id="f_nid">
+        </div>
+        <div class="field">
+          <label for="f_phone">الهاتف</label>
+          <input type="text" id="f_phone" inputmode="tel">
+        </div>
+        <div class="field">
+          <label for="f_sup">المشرف المباشر</label>
+          <input type="text" id="f_sup">
+        </div>
+        <div class="field">
+          <label for="f_state">حالة الموظف</label>
+          <select id="f_state">
+            <option value="نشط">نشط</option>
+            <option value="موقوف">موقوف</option>
+            <option value="منتهي الخدمة">منتهي الخدمة</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f_notes">ملاحظات</label>
+          <input type="text" id="f_notes">
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:20px">
+        <button type="submit" class="btn btn-primary" id="saveBtn">
+          <span class="btn-text">حفظ الموظف</span><span class="spinner"></span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>سجل الموظفين</h2><p>اضغط الاسم لتعديل البيانات، أو «المخالفات» لعرض سجله</p></div>
+      <div class="btn-row">
+        <span class="badge-pill" id="count">—</span>
+        <button class="btn btn-ghost btn-sm" onclick="load(true)">تحديث من الخادم</button>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom:18px">
+      <div class="field" style="margin:0">
+        <label for="fSearch">بحث بالاسم أو الرقم</label>
+        <input type="text" id="fSearch" placeholder="اكتب ثم اضغط Enter">
+      </div>
+      <div class="field" style="margin:0">
+        <label for="fProject">تصفية بالمشروع</label>
+        <select id="fProject"><option value="all">جارٍ التحميل…</option></select>
+        <div class="hint" id="fProjectNote"></div>
+      </div>
+      <div class="field" style="margin:0">
+        <label for="fProb">فترة التجربة</label>
+        <select id="fProb">
+          <option value="all">كل الموظفين</option>
+          <option value="yes">تحت التجربة فقط</option>
+          <option value="no">أنهوا التجربة</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0">
+        <label for="fKind">النوع</label>
+        <select id="fKind">
+          <option value="all">الموظفون ومستخدمو النظام</option>
+          <option value="emp">الموظفون فقط</option>
+          <option value="user">مستخدمو النظام فقط</option>
+        </select>
+        <div class="hint">مستخدم النظام يظهر هنا إذا كان مرتبطاً بمشروع</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>الرقم</th><th>الاسم</th><th>الوظيفة</th><th>المشروع</th>
+          <th>تاريخ التوظيف</th><th>مدة الخدمة</th><th>الساعات</th><th>الهاتف</th><th>الحالة</th><th></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:26px">جارٍ التحميل…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- نافذة سجل المخالفات -->
+<div class="modal-back" id="histBack">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="histTitle">سجل المخالفات</h3>
+      <button onclick="document.getElementById('histBack').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" id="histBody"></div>
+  </div>
+</div>
+
+<script>
+var EDITING = null;
+var LINK_USER = null;                 // حساب المستخدم الذي تُستكمل بياناته الآن
+var SCOPE_PROJECTS = [];
+// حذف الموظفين لمن مستوى صلاحيته 1 فأعلى؛ المستخدم العادي (0) يضيف ويعدّل ولا يحذف
+var CANDEL = Mirage.session().accessLevel >= 1 || Mirage.isAdmin();
+var u = Mirage.boot({
+  page: 'employees',
+  title: 'بيانات الموظفين',
+  sub: 'قاعدة بيانات العمالة: التوظيف، الوظيفة، المشروع والحالة'
+});
+
+if (u) {
+  // تاريخ بدء التدريب يبدأ بتاريخ تعبئة النموذج، ويمكن تعديله
+  document.getElementById('f_training').value = Mirage.today();
+
+  Mirage.lists().then(function (res) {
+    Mirage.jobField('f_job');      // مجموعتان: عامة وإشرافية، بحسب مستوى المستخدم
+    // المشرف يضيف في مشروعه فقط، والمسؤول في مشاريع فريقه، والإدارة العليا في كل المشاريع.
+    // قاعدة البيانات تفرض النطاق نفسه، فالقائمة هنا تمنع الاختيار الخاطئ قبل وقوعه.
+    SCOPE_PROJECTS = res.all_projects ? (res.projects || []) : (res.my_projects || []);
+    Mirage.fillSelect('f_project', SCOPE_PROJECTS,
+      SCOPE_PROJECTS.length === 1 ? '' : 'اختر المشروع…', SCOPE_PROJECTS.length === 1 ? SCOPE_PROJECTS[0] : '');
+    document.getElementById('f_projectHint').textContent = res.all_projects
+      ? 'كل مشاريع الشركة'
+      : (SCOPE_PROJECTS.length
+          ? (SCOPE_PROJECTS.length === 1 ? 'تضيف موظفين في مشروعك فقط' : 'المشاريع التي أنت مسؤول عنها: ' + SCOPE_PROJECTS.length)
+          : 'لم يُربط حسابك بمشروع — راجع مدير النظام');
+    if (!SCOPE_PROJECTS.length) document.getElementById('saveBtn').disabled = true;
+    Mirage.fillSelect('f_center',  res.centers || [],  'بلا مركز محدد');
+
+    Mirage.fillProjectScope('fProject', res);
+
+    // أزرار إضافة الخيارات — لمدير النظام فقط (عدا الوظيفة: لكل مستوى مجموعته)
+    Mirage.adder('f_center', 'centers', 'مركز');
+    Mirage.adder('f_project', 'projects', 'مشروع');
+
+    load();
+  });
+
+  document.getElementById('fSearch').oninput = paint;
+  document.getElementById('fProject').onchange = paint;
+  document.getElementById('fProb').onchange = paint;
+  document.getElementById('fKind').onchange = paint;
+  document.getElementById('f_hire').addEventListener('change', hireHint);
+
+  document.getElementById('empForm').onsubmit = function (e) {
+    e.preventDefault();
+    var hrs = document.getElementById('f_hours').value.trim();
+    if (hrs && (!/^\d+(\.\d+)?$/.test(hrs) || +hrs <= 0 || +hrs > 24)) {
+      document.getElementById('f_hours').focus();
+      return Mirage.note('ساعات العمل رقم بين 1 و 24 (أرقام فقط)');
+    }
+    var tr = document.getElementById('f_training').value, hd = document.getElementById('f_hire').value;
+    if (tr && hd && tr > hd) return Mirage.note('تاريخ بدء التدريب يجب ألا يكون بعد تاريخ التوظيف');
+    var btn = document.getElementById('saveBtn');
+    Mirage.busy(btn, true);
+    Mirage.api('employee_save', {
+      id: document.getElementById('f_id').value.trim(),
+      name: document.getElementById('f_name').value.trim(),
+      job: document.getElementById('f_job').value,
+      project: document.getElementById('f_project').value,
+      center: document.getElementById('f_center').value,
+      hire_date: document.getElementById('f_hire').value,
+      training_start: document.getElementById('f_training').value,
+      hours: document.getElementById('f_hours').value.trim(),
+      nationality: document.getElementById('f_nat').value.trim(),
+      national_id: document.getElementById('f_nid').value.trim(),
+      phone: document.getElementById('f_phone').value.trim(),
+      supervisor: document.getElementById('f_sup').value.trim(),
+      state: document.getElementById('f_state').value,
+      notes: document.getElementById('f_notes').value.trim()
+    }).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      var empId = document.getElementById('f_id').value.trim();
+      var user = LINK_USER;
+      var done = function () {
+        Mirage.toast(res.mode === 'update' ? 'حُدِّثت البيانات' : 'أُضيف الموظف');
+        resetForm();
+        Mirage.clearListCache();
+        load(true);
+      };
+      // استكمال بيانات مستخدم: يُربط حسابه بالسجل الجديد
+      if (user) {
+        Mirage.api('link_user_employee', { username: user, emp_id: empId }).then(function (lk) {
+          if (lk.status !== 'success') Mirage.fail(lk);
+          done();
+        });
+      } else { done(); }
+    });
+  };
+}
+
+var ALL = [];
+
+function load(force) {
+  if (ALL.length && !force) return paint();
+  Mirage.api('employees_list', {}).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    ALL = (res.employees || []).concat(res.users || []);
+    paint();
+  });
+}
+
+/** التصفية والبحث يجريان في المتصفح — لا طلب جديد للخادم */
+function paint() {
+    var proj = document.getElementById('fProject').value;
+    var q = document.getElementById('fSearch').value.trim();
+    var fp = document.getElementById('fProb').value;
+    var fk = document.getElementById('fKind').value;
+    var list = ALL.filter(function (e) {
+      if (fk === 'emp'  && e.is_user) return false;
+      if (fk === 'user' && !e.is_user) return false;
+      if (proj !== 'all' && e.project !== proj) return false;
+      if (q && e.name.indexOf(q) === -1 && String(e.id).indexOf(q) === -1) return false;
+      if (fp !== 'all') {
+        if (e.is_user) return false;          // المستخدم بلا تاريخ توظيف، فلا تنطبق عليه التجربة
+        var on = e.state !== 'منتهي الخدمة' && Mirage.onProbation(e.hire_date);
+        if ((fp === 'yes') !== on) return false;
+      }
+      return true;
+    });
+    var nUsers = list.filter(function (e) { return e.is_user; }).length;
+    document.getElementById('count').textContent = (list.length - nUsers) + ' موظف' +
+      (nUsers ? ' و' + nUsers + ' مستخدم' : '') + ' من ' + ALL.length;
+    document.getElementById('rows').innerHTML = list.length
+      ? list.map(function (e) {
+          var nameCell = e.is_user
+            ? '<b>' + esc(e.name) + '</b> <span class="tag tag-blue">مستخدم النظام</span>' +
+              '<div class="hint" style="margin:2px 0 0">' +
+              (CANDEL ? 'بلا سجلّ موظف بعد — «استكمال البيانات» يفتح النموذج باسمه'
+                      : 'بلا سجلّ موظف بعد — يستكملها المسؤول') + '</div>'
+            : '<span class="cell-link" onclick=\'edit(' + JSON.stringify(e).replace(/'/g, "&#39;") + ')\'>' + esc(e.name) + '</span>' +
+              (e.username ? ' <span class="tag tag-blue">مستخدم النظام</span>' : '') +
+              (e.state !== 'منتهي الخدمة' ? ' ' + Mirage.probationTag(e.hire_date) : '') +
+              (e.new_hire ? '<div class="hint" style="margin:2px 0 0">من نموذج ' + esc(e.new_hire) + '</div>' : '');
+
+          return '<tr' + (e.is_user ? ' style="background:#F8FAFC"' : '') + '>' +
+            '<td style="font-weight:800">' + esc(e.is_user ? e.username : e.id) + Mirage.entryLine(e) + '</td>' +
+            '<td>' + nameCell + '</td>' +
+            '<td>' + esc(e.job || '—') + '</td>' +
+            '<td>' + esc(e.project || '—') + '</td>' +
+            '<td style="white-space:nowrap">' + esc(e.hire_date || '—') + '</td>' +
+            '<td style="white-space:nowrap">' + (e.is_user ? '—' : service(e.hire_date)) + '</td>' +
+            '<td>' + esc(e.hours || '—') + '</td>' +
+            '<td>' + esc(e.phone || '—') + '</td>' +
+            '<td>' + Mirage.tag(e.state) + '</td>' +
+            '<td style="white-space:nowrap">' +
+              (e.is_user && CANDEL
+                ? '<button class="btn btn-primary btn-sm" onclick="completeUser(\'' + esc(e.username) + '\')">استكمال البيانات</button> '
+                : '') +
+              '<button class="btn btn-ghost btn-sm" onclick="history_(\'' + esc(e.id) + '\',\'' + esc(e.name) + '\')">المخالفات</button> ' +
+              (CANDEL && !e.is_user ? '<button class="btn btn-danger btn-sm" onclick="del(\'' + esc(e.id) + '\')">حذف</button>' : '') +
+            '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:30px">لا نتائج. أضف موظفاً من النموذج أعلاه.</td></tr>';
+}
+
+/** تحت التجربة أم لا، بحسب تاريخ التوظيف المكتوب */
+function hireHint() {
+  var h = document.getElementById('f_hire').value, el = document.getElementById('f_hireHint');
+  if (!h) { el.textContent = 'تحت التجربة ثلاثة أشهر من هذا التاريخ'; el.style.color = ''; return; }
+  var on = Mirage.onProbation(h);
+  el.textContent = on ? 'تحت التجربة حتى ' + Mirage.ltr(Mirage.probationEnd(h)) : 'أنهى فترة التجربة في ' + Mirage.ltr(Mirage.probationEnd(h));
+  el.style.color = on ? '#7C3AED' : '';
+}
+
+function service(hire) {
+  if (!hire) return '—';
+  var d = new Date(hire);
+  if (isNaN(d)) return '—';
+  var months = (new Date().getFullYear() - d.getFullYear()) * 12 + (new Date().getMonth() - d.getMonth());
+  if (months < 0) return '—';
+  var y = Math.floor(months / 12), m = months % 12;
+  return (y ? y + ' سنة ' : '') + (m ? m + ' شهر' : (y ? '' : 'أقل من شهر'));
+}
+
+function edit(e) {
+  EDITING = e.id;
+  document.getElementById('f_id').value = e.id;
+  document.getElementById('f_id').readOnly = true;
+  document.getElementById('f_name').value = e.name;
+  document.getElementById('f_job').value = e.job;
+  var fp = document.getElementById('f_project');
+  fp.value = e.project;
+  if (e.project && fp.value !== e.project) {      // موظف مشروعه خارج القائمة الحالية
+    fp.insertAdjacentHTML('beforeend', '<option value="' + esc(e.project) + '">' + esc(e.project) + '</option>');
+    fp.value = e.project;
+  }
+  document.getElementById('f_center').value = e.center;
+  document.getElementById('f_hire').value = e.hire_date;
+  document.getElementById('f_training').value = e.training_start || '';
+  document.getElementById('f_hours').value = e.hours || '';
+  hireHint();
+  document.getElementById('f_nat').value = e.nationality;
+  document.getElementById('f_nid').value = e.national_id;
+  document.getElementById('f_phone').value = e.phone;
+  document.getElementById('f_sup').value = e.supervisor;
+  document.getElementById('f_state').value = e.state;
+  document.getElementById('f_notes').value = e.notes;
+
+  document.getElementById('formTitle').textContent = 'تعديل بيانات: ' + e.name;
+  var btn = document.getElementById('saveBtn');
+  btn.classList.remove('btn-primary'); btn.classList.add('btn-warn');
+  btn.querySelector('.btn-text').textContent = 'تحديث البيانات';
+  document.getElementById('cancelBtn').style.display = 'inline-flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetForm() {
+  EDITING = null;
+  LINK_USER = null;
+  document.getElementById('empForm').reset();
+  // تاريخ بدء التدريب يبدأ بتاريخ تعبئة النموذج، ويمكن تعديله
+  document.getElementById('f_training').value = Mirage.today();
+  document.getElementById('f_name').readOnly = false;
+  var note = document.getElementById('linkNote');
+  if (note) note.style.display = 'none';
+  if (SCOPE_PROJECTS.length === 1) document.getElementById('f_project').value = SCOPE_PROJECTS[0];
+  document.getElementById('f_id').readOnly = false;
+  hireHint();
+  document.getElementById('formTitle').textContent = 'إضافة موظف جديد';
+  var btn = document.getElementById('saveBtn');
+  btn.classList.remove('btn-warn'); btn.classList.add('btn-primary');
+  btn.querySelector('.btn-text').textContent = 'حفظ الموظف';
+  document.getElementById('cancelBtn').style.display = 'none';
+}
+
+/**
+ * استكمال بيانات مستخدم: يفتح نموذج الموظف باسمه ووظيفته ومشروعه،
+ * ويقترح الرقم الوظيفي التالي. بعد الحفظ يُربط حسابه بالسجل.
+ */
+function completeUser(username) {
+  var x = ALL.filter(function (e) { return e.is_user && e.username === username; })[0];
+  if (!x) return;
+
+  resetForm();
+  LINK_USER = username;
+  EDITING = null;
+
+  document.getElementById('f_name').value = x.name;
+  document.getElementById('f_name').readOnly = true;
+  if (x.job)     document.getElementById('f_job').value = x.job;
+  if (x.project) document.getElementById('f_project').value = x.project;
+  if (x.center)  document.getElementById('f_center').value = x.center;
+  document.getElementById('f_hire').value = Mirage.today();
+  document.getElementById('f_state').value = 'نشط';
+  document.getElementById('f_sup').value = '';
+  hireHint();
+
+  document.getElementById('formTitle').textContent = 'استكمال بيانات المستخدم: ' + x.name;
+  document.getElementById('saveBtn').querySelector('.btn-text').textContent = 'حفظ بيانات الموظف وربطها بالحساب';
+  document.getElementById('cancelBtn').style.display = '';
+
+  var note = document.getElementById('linkNote');
+  note.style.display = '';
+  note.innerHTML = '<b>استكمال بيانات حساب «' + esc(x.name) + '»:</b> املأ البيانات نفسها التي تُملأ لأي موظف — ' +
+    'تاريخ بدء التدريب وبدء العمل والمسمى والساعات والهاتف والجنسية والهوية. ' +
+    'بعد الحفظ يصبح له سجلّ موظف كامل مرتبط بحسابه، وتُحسب له فترة التجربة ومدة الخدمة كغيره.';
+
+  Mirage.api('next_emp_id', {}).then(function (r) {
+    if (r.id && !document.getElementById('f_id').value) document.getElementById('f_id').value = r.id;
+  });
+
+  document.getElementById('empForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('f_hire').focus();
+}
+
+function del(id) {
+  Mirage.confirm('سيُحذف الموظف رقم ' + id + ' من قاعدة البيانات. سجل مخالفاته يبقى محفوظاً.').then(function (yes) {
+    if (!yes) return;
+    Mirage.api('employee_delete', { id: id }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.toast('حُذف الموظف'); Mirage.clearListCache(); load(true);
+    });
+  });
+}
+
+function history_(id, name) {
+  document.getElementById('histTitle').textContent = 'سجل مخالفات: ' + name;
+  document.getElementById('histBody').innerHTML = '<div class="empty">جارٍ التحميل…</div>';
+  document.getElementById('histBack').classList.add('open');
+
+  Mirage.api('employee_violations', { employee_id: id, employee_name: name }).then(function (res) {
+    var h = res.history || [];
+    document.getElementById('histBody').innerHTML = h.length
+      ? '<div class="alert alert-info">إجمالي المخالفات المسجّلة: ' + h.length + '</div>' +
+        '<div class="table-wrap"><table><thead><tr><th>الرقم</th><th>التاريخ</th>' +
+        '<th>النوع</th><th>التكرار</th><th>الجزاء المقترح</th><th>الحالة</th></tr></thead><tbody>' +
+        h.map(function (v) {
+          return '<tr><td>' + esc(v.id) + '</td><td style="white-space:nowrap">' + esc(v.date) + '</td>' +
+            '<td>' + esc(v.type) + '</td><td>' + (v.repeat || '—') + '</td>' +
+            '<td>' + esc(v.penalty || '—') + '</td><td>' + Mirage.tag(v.state) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="empty"><span class="ico">✅</span><b>سجل نظيف</b>لا مخالفات مسجّلة على هذا الموظف.</div>';
+  });
+}
+</script>
+</body>
+</html>

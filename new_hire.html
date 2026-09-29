@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>موظف جديد | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <div class="alert alert-info" id="routeNote" style="display:none">جارٍ قراءة المسار…</div>
+
+  <form id="hForm" novalidate>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>الموضوع: تفاصيل موظف/ة جديد</h2><p>يُضاف تلقائياً إلى «بيانات الموظفين» برقم وظيفي جديد عند الحفظ</p></div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="project">المشروع <span class="req">*</span></label>
+          <select id="project" required><option value="">جارٍ التحميل…</option></select>
+          <div class="hint" id="projectNote"></div>
+        </div>
+        <div class="field">
+          <label for="full_name">الاسم والشهرة <span class="req">*</span></label>
+          <div class="hint" style="margin:0 0 6px">يصبح «اسم الموظف» في بيانات الموظفين</div>
+          <input type="text" id="full_name" required minlength="3" maxlength="80">
+        </div>
+        <div class="field">
+          <label for="training_start">تاريخ بدء التدريب</label>
+          <input type="date" id="training_start">
+          <div class="hint">تاريخ اليوم تلقائياً، ويمكن تعديله</div>
+        </div>
+        <div class="field">
+          <label for="work_start">تاريخ بدء العمل الفعلي <span class="req">*</span></label>
+          <input type="date" id="work_start" required>
+          <div class="hint">يصبح «تاريخ التوظيف»، ويبقى الموظف <b>تحت التجربة</b> ثلاثة أشهر بعده <span id="probEnd"></span></div>
+        </div>
+        <div class="field">
+          <label for="job_title">المسمى الوظيفي <span class="req">*</span></label>
+          <select id="job_title" required><option value="">جارٍ التحميل…</option></select>
+          <div class="hint">القائمة نفسها في «بيانات الموظفين»</div>
+        </div>
+        <div class="field">
+          <label for="contact">وسيلة الاتصال</label>
+          <input type="text" id="contact" inputmode="tel" maxlength="60" placeholder="رقم الهاتف أو واتساب">
+          <div class="hint">يصبح «الهاتف» في بيانات الموظفين</div>
+        </div>
+        <div class="field">
+          <label for="work_hours">ساعات العمل اليومية <span class="req">*</span></label>
+          <input type="number" id="work_hours" required min="1" max="24" step="0.5" inputmode="decimal" placeholder="مثال: 8">
+          <div class="hint">أرقام فقط، من 1 إلى 24</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>الفحوصات الطبية</h2><p>أشّر على كل فحص أُجري</p></div></div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="exam_date">تاريخ إجراء الفحوصات</label>
+          <input type="date" id="exam_date">
+        </div>
+        <div class="field">
+          <label for="exam_place">مكان إجراء الفحوصات</label>
+          <input type="text" id="exam_place" maxlength="100" placeholder="اسم المختبر أو المستشفى">
+        </div>
+      </div>
+      <div class="field">
+        <label>الفحوصات التي تم إجراؤها</label>
+        <div class="exam-grid" id="exams"></div>
+        <div class="hint" id="examCount">لم يُؤشَّر على أي فحص</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>طريقة تسديد قيمة الفحوصات <span class="req">*</span></h2></div></div>
+      <div class="sign-choice" id="payChoice"></div>
+      <div class="field" id="receiptWrap" style="display:none;margin-top:18px">
+        <label for="receipt">صورة الإيصال <span class="req">*</span></label>
+        <input type="file" id="receipt" accept="image/*,application/pdf">
+        <div class="hint">صورة أو PDF، حتى 8 ميجابايت</div>
+      </div>
+      <div class="field" style="margin-top:18px">
+        <label for="notes">ملاحظات</label>
+        <textarea id="notes" rows="2" maxlength="1000"></textarea>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary" id="sendBtn">
+        <span class="btn-text">حفظ نموذج الموظف الجديد</span><span class="spinner"></span>
+      </button>
+      <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>الموظفون الجدد هذا الشهر</h2><p>في المشاريع التي تراها</p></div>
+      <span class="badge-pill" id="recentCount">—</span>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>بدء العمل</th><th>المشروع</th><th>الاسم</th><th>الرقم الوظيفي</th><th>المسمى</th><th>الساعات</th><th>الفحوصات</th><th>التسديد</th><th>الإيصال</th></tr></thead>
+      <tbody id="recent"><tr><td colspan="9" class="td-empty">جارٍ التحميل…</td></tr></tbody>
+    </table></div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var MAX_MB = 8;
+
+var u = Mirage.boot({
+  page: 'new_hire',
+  title: 'موظف جديد',
+  sub: 'تفاصيل التعيين والفحوصات الطبية، ويُحسب تلقائياً في تقرير الجهوزية'
+});
+
+if (u) {
+  document.getElementById('work_start').value = Mirage.today();
+  // تاريخ بدء التدريب يبدأ بتاريخ تعبئة النموذج، ويمكن تعديله
+  document.getElementById('training_start').value = Mirage.today();
+
+  // الفحوصات العشرة
+  document.getElementById('exams').innerHTML = MirageAPI.EXAMS.map(function (x) {
+    return '<label class="check-item"><input type="checkbox" value="' + x.key + '"> ' + esc(x.label) + '</label>';
+  }).join('');
+  document.querySelectorAll('#exams input').forEach(function (c) {
+    c.onchange = function () {
+      c.closest('.check-item').classList.toggle('checked', c.checked);
+      var n = document.querySelectorAll('#exams input:checked').length;
+      document.getElementById('examCount').textContent = n ? n + ' من ' + MirageAPI.EXAMS.length + ' فحوصات' : 'لم يُؤشَّر على أي فحص';
+    };
+  });
+
+  // طريقتا التسديد
+  document.getElementById('payChoice').innerHTML = MirageAPI.PAYMENT.map(function (p, i) {
+    return '<label class="sign-opt"><input type="radio" name="pay" value="' + esc(p) + '">' +
+      '<span><span class="t">' + esc(p) + '</span><span class="d">' +
+      (i === 0 ? 'أرفق صورة الإيصال أدناه' : 'تُرسل الإدارة المبلغ لاحقاً') + '</span></span></label>';
+  }).join('');
+  document.querySelectorAll('input[name="pay"]').forEach(function (r) {
+    r.onchange = function () {
+      document.querySelectorAll('#payChoice .sign-opt').forEach(function (o) {
+        o.classList.toggle('on', o.querySelector('input').checked);
+      });
+      document.getElementById('receiptWrap').style.display = r.value === MirageAPI.PAYMENT[0] ? 'block' : 'none';
+    };
+  });
+
+  Mirage.lists().then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.fillProjectScope('project', res, { single: true });
+    Mirage.jobField('job_title');   // مجموعتا الوظائف بحسب مستوى المستخدم
+
+  });
+
+  // المسار يراه مدير النظام وحده
+  Mirage.routeNote('routeNote', {
+    form: 'موظف_جديد',
+    intro: 'يُشعَر بهذا النموذج ويطّلع عليه:'
+  });
+
+  loadRecent();
+
+  var probHint = function () {
+    var w = document.getElementById('work_start').value;
+    document.getElementById('probEnd').textContent = w ? '(حتى ' + Mirage.ltr(Mirage.probationEnd(w)) + ')' : '';
+  };
+  document.getElementById('work_start').addEventListener('change', probHint);
+  probHint();
+
+  document.getElementById('hForm').onsubmit = function (e) {
+    e.preventDefault();
+    var g = function (id) { return document.getElementById(id).value.trim(); };
+    var pay = document.querySelector('input[name="pay"]:checked');
+    var file = document.getElementById('receipt').files[0];
+
+    if (!g('project'))               return focusNote('project', 'اختر المشروع');
+    if (g('full_name').length < 3)   return focusNote('full_name', 'اكتب الاسم والشهرة');
+    if (!g('work_start'))            return focusNote('work_start', 'حدّد تاريخ بدء العمل الفعلي');
+    if (!g('job_title'))             return focusNote('job_title', 'اختر المسمى الوظيفي');
+    var hrs = g('work_hours');
+    if (!/^\d+(\.\d+)?$/.test(hrs) || +hrs <= 0 || +hrs > 24) {
+      return focusNote('work_hours', 'ساعات العمل رقم بين 1 و 24 (أرقام فقط)');
+    }
+    if (g('training_start') && g('training_start') > g('work_start')) {
+      return focusNote('training_start', 'تاريخ بدء التدريب يجب ألا يكون بعد بدء العمل الفعلي');
+    }
+    if (!pay) return Mirage.note('حدّد طريقة تسديد قيمة الفحوصات');
+    if (pay.value === MirageAPI.PAYMENT[0] && !file) return Mirage.note('أرفق صورة الإيصال لأن المشرف دفع المبلغ');
+    if (file && file.size > MAX_MB * 1048576) return Mirage.note('الإيصال أكبر من ' + MAX_MB + ' ميجابايت');
+
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+
+    var send = function (receiptData) {
+      Mirage.api('new_hire_new', {
+        project: g('project'), full_name: g('full_name'),
+        training_start: g('training_start'), work_start: g('work_start'),
+        job_title: g('job_title'), contact: g('contact'), work_hours: g('work_hours'),
+        exam_date: g('exam_date'), exam_place: g('exam_place'),
+        exams: Array.prototype.map.call(document.querySelectorAll('#exams input:checked'), function (c) { return c.value; }),
+        payment_method: pay.value,
+        receipt_name: file && pay.value === MirageAPI.PAYMENT[0] ? file.name : '',
+        receipt_mime: file ? (file.type || 'application/octet-stream') : '',
+        receipt_data: receiptData || '',
+        notes: g('notes')
+      }).then(function (res) {
+        Mirage.busy(btn, false);
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.ok('رقم النموذج ' + res.id +
+          (res.emp_id ? '. أُضيف إلى بيانات الموظفين برقم وظيفي ' + res.emp_id + '، وهو تحت التجربة حتى ' +
+                        Mirage.ltr(Mirage.probationEnd(g('work_start'))) : '') +
+          (Mirage.isAdmin() && res.route.length ? '. وأُشعِر: ' + res.route.join('، ') : ''), 'حُفظ النموذج');
+        Mirage.clearListCache();
+        document.getElementById('hForm').reset();
+        document.querySelectorAll('#exams .check-item, #payChoice .sign-opt').forEach(function (x) { x.classList.remove('checked', 'on'); });
+        document.getElementById('receiptWrap').style.display = 'none';
+        document.getElementById('examCount').textContent = 'لم يُؤشَّر على أي فحص';
+        document.getElementById('work_start').value = Mirage.today();
+        document.getElementById('training_start').value = Mirage.today();
+        probHint();
+        loadRecent();
+      });
+    };
+
+    if (file && pay.value === MirageAPI.PAYMENT[0]) {
+      var reader = new FileReader();
+      reader.onerror = function () { Mirage.busy(btn, false); Mirage.fail('تعذّرت قراءة صورة الإيصال'); };
+      reader.onload = function () { send(String(reader.result).split(',')[1]); };
+      reader.readAsDataURL(file);
+    } else {
+      send('');
+    }
+  };
+}
+
+function focusNote(id, msg) {
+  document.getElementById(id).focus();
+  return Mirage.note(msg);
+}
+
+function loadRecent() {
+  Mirage.api('movement_list', { month: Mirage.thisMonth() }).then(function (res) {
+    var box = document.getElementById('recent');
+    if (res.status !== 'success') {
+      box.innerHTML = '<tr><td colspan="9" class="td-empty">' + esc(res.message) + '</td></tr>';
+      return;
+    }
+    var list = res.joined || [];
+    document.getElementById('recentCount').textContent = list.length;
+    box.innerHTML = list.length
+      ? list.map(function (x) {
+          return '<tr><td style="white-space:nowrap">' + esc(x.date) + Mirage.entryLine(x) + '</td><td>' + esc(x.project) + '</td>' +
+            '<td style="font-weight:800">' + esc(x.name) + ' ' + Mirage.probationTag(x.date) + '</td>' +
+            '<td>' + esc(x.emp_id || '—') + '</td><td>' + esc(x.job || '—') + '</td>' +
+            '<td>' + esc(x.hours || '—') + '</td>' +
+            '<td><span class="tag tag-blue">' + x.exams.length + ' / ' + MirageAPI.EXAMS.length + '</span></td>' +
+            '<td style="max-width:220px">' + esc(x.payment || '—') + '</td>' +
+            '<td>' + (x.receipt_path
+              ? '<span class="cell-link" onclick="openFile(\'' + esc(x.receipt_path) + '\')">' + esc(x.receipt_name || 'الإيصال') + '</span>'
+              : '—') + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="9" class="td-empty">لا موظفين جدد هذا الشهر.</td></tr>';
+  });
+}
+
+function openFile(path) {
+  Mirage.api('file_url', { path: path }).then(function (res) {
+    if (res.status !== 'success' || !res.url) return Mirage.fail(res);
+    window.open(res.url, '_blank', 'noopener');
+  });
+}
+</script>
+</body>
+</html>

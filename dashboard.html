@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>المخالفات والقرارات | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="grid-4">
+    <div class="stat"><div class="label">البلاغات في التصفية</div><div class="value" id="kAll">—</div></div>
+    <div class="stat is-warn"><div class="label">بانتظار رأيي الآن</div><div class="value" id="kMine">—</div><div class="foot">على محطتي</div></div>
+    <div class="stat is-danger"><div class="label">قيد الاعتماد</div><div class="value" id="kOpen">—</div><div class="foot">على محطات أخرى</div></div>
+    <div class="stat is-success"><div class="label">مغلقة</div><div class="value" id="kClosed">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>تصفية البلاغات</h2><p id="scopeNote">—</p></div>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="clearFilters()">مسح التصفية</button>
+    </div>
+    <div class="grid-3 filters">
+      <div class="field"><label for="fMonth">الشهر</label><select id="fMonth"></select></div>
+      <div class="field"><label for="fProject">المشروع</label><select id="fProject"></select></div>
+      <div class="field"><label for="fName">اسم الموظف</label><input type="search" id="fName" placeholder="اكتب جزءاً من الاسم أو الرقم الوظيفي"></div>
+      <div class="field"><label for="fType">نوع المخالفة</label><select id="fType"></select></div>
+      <div class="field"><label for="fDecision">القرار</label><select id="fDecision"></select></div>
+      <div class="field"><label for="fMoney">نوع القرار</label>
+        <select id="fMoney">
+          <option value="">كل القرارات</option>
+          <option value="money">القرارات المالية (خصم، غرامة، حسم)</option>
+          <option value="nomoney">قرارات غير مالية</option>
+        </select>
+      </div>
+      <div class="field"><label for="fState">الحالة</label>
+        <select id="fState">
+          <option value="all">كل الحالات</option>
+          <option value="mine">بانتظار رأيي</option>
+          <option value="open">قيد الاعتماد</option>
+          <option value="closed">مغلقة</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>البلاغات</h2><p id="countNote">—</p>
+        <p class="hint" id="printHint" style="display:none;margin:4px 0 0">التقرير والقرارات يتبعان التصفية أعلاه — ولحفظ PDF اختر «حفظ بصيغة PDF» في نافذة الطباعة.</p></div>
+      <div class="btn-row">
+        <span id="printWrap" style="display:none">
+          <button class="btn btn-dark btn-sm" type="button" onclick="printReport()"
+                  title="في نافذة الطباعة اختر «حفظ بصيغة PDF»">💾 حفظ التقرير PDF</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="printList()">🖨️ طباعة القرارات بحسب الفلتر</button>
+        </span>
+        <button class="btn btn-primary btn-sm" id="loadBtn" onclick="load()">
+          <span class="btn-text">تحديث</span><span class="spinner"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>الرقم</th><th>تاريخ المخالفة</th><th>الموظف</th><th>المشروع</th>
+          <th>النوع</th><th>التكرار</th><th>المُبلغ</th><th>الحالة</th><th>القرار</th><th></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="10" class="td-empty">جارٍ التحميل…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- ورقة الطباعة: لا تظهر على الشاشة، وتُطبع وحدها -->
+<div id="printArea"></div>
+
+<!-- نافذة البلاغ والقرار -->
+<div class="modal-back" id="back">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="mTitle">البلاغ</h3>
+      <button onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<script>
+var DATA = [], MYROLE = '', MYNAME = '', CANALL = false, ISADMIN = false;
+var CATALOG = {};                      // رقم المخالفة ← درجات الجزاء من اللائحة
+var LAST_LIST = [];                    // البلاغات المعروضة الآن — تُطبع كما هي
+var TOP = false;                       // إدارة عليا: الطباعة وتصفية القرارات المالية
+var TIER_NAMES = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة'];
+
+var u = Mirage.boot({
+  page: 'dashboard',
+  title: 'إدارة المخالفات والقرارات',
+  sub: 'كل بلاغ يمرّ بالمسؤول المباشر ثم مسؤول القسم ثم شؤون الموظفين ثم المدير العام'
+});
+
+if (u) {
+  TOP = Mirage.isAdmin() || Number(u.accessLevel) >= 2;
+  if (TOP) {
+    document.getElementById('printWrap').style.display = '';
+    document.getElementById('printHint').style.display = '';
+  }
+
+  // اللائحة تُقرأ مرة واحدة: منها درجات الجزاء في نموذج الرأي
+  Mirage.lists().then(function (res) {
+    (res.violation_types || []).forEach(function (x) {
+      CATALOG[x.code] = (x.tiers || []).filter(Boolean);
+    });
+  });
+
+  Mirage.fillSelect('fMonth', Mirage.monthOptions(24), 'كل الأشهر', '');
+  document.getElementById('fMonth').onchange = load;
+  ['fProject', 'fType', 'fDecision', 'fState', 'fMoney'].forEach(function (id) {
+    document.getElementById(id).onchange = render;
+  });
+  document.getElementById('fName').oninput = render;
+  load();
+}
+
+function load() {
+  var btn = document.getElementById('loadBtn');
+  Mirage.busy(btn, true);
+  Mirage.api('violations_list', {
+    user: u.realName,
+    month: document.getElementById('fMonth').value
+  }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    DATA = res.violations || [];
+    MYROLE = res.my_role || '';
+    MYNAME = res.my_name || u.realName;
+    CANALL = !!res.can_see_all;
+    ISADMIN = !!res.is_admin;
+    document.getElementById('scopeNote').textContent = CANALL
+      ? 'أنت ترى كل بلاغات الشركة'
+      : 'أنت ترى بلاغاتك وبلاغات فريقك وكل بلاغ أنت على مساره';
+    fillFilters();
+    render();
+  });
+}
+
+/** قوائم التصفية تُبنى من البلاغات المحمّلة فعلاً */
+function fillFilters() {
+  var uniq = function (f) {
+    return DATA.map(f).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort();
+  };
+  var keep = function (id, items, ph) {
+    var cur = document.getElementById(id).value;
+    Mirage.fillSelect(id, items, ph, cur);
+  };
+  keep('fProject', uniq(function (v) { return v.project; }), 'كل المشاريع');
+  keep('fType', uniq(function (v) { return v.type; }), 'كل الأنواع');
+  var decisions = uniq(function (v) { return v.decision; });
+  keep('fDecision', [{ value: '__none__', text: 'بلا قرار نهائي بعد' }].concat(decisions), 'كل القرارات');
+}
+
+function clearFilters() {
+  ['fProject', 'fType', 'fDecision', 'fMoney'].forEach(function (id) { document.getElementById(id).value = ''; });
+  document.getElementById('fName').value = '';
+  document.getElementById('fState').value = 'all';
+  if (document.getElementById('fMonth').value) { document.getElementById('fMonth').value = ''; load(); }
+  else render();
+}
+
+/** هل البلاغ على محطتي؟ بالاسم في المسار الجديد، وبالصلاحية في البلاغات القديمة */
+function myTurn(v) {
+  if (v.state === 'مغلقة') return false;
+  if (v.station) return v.station === MYNAME || v.station === MYROLE;
+  return CANALL;
+}
+
+function render() {
+  var fp = document.getElementById('fProject').value;
+  var ft = document.getElementById('fType').value;
+  var fd = document.getElementById('fDecision').value;
+  var fs = document.getElementById('fState').value;
+  var fm = document.getElementById('fMoney').value;
+  var q  = document.getElementById('fName').value.trim();
+
+  var base = DATA.filter(function (v) {
+    if (fp && v.project !== fp) return false;
+    if (ft && v.type !== ft) return false;
+    if (fd === '__none__' && v.decision) return false;
+    if (fd && fd !== '__none__' && v.decision !== fd) return false;
+    if (fm === 'money' && !isMoney(v)) return false;
+    if (fm === 'nomoney' && isMoney(v)) return false;
+    if (q && (v.offender || '').indexOf(q) === -1 && String(v.employee_id).indexOf(q) === -1) return false;
+    return true;
+  });
+
+  var mine = base.filter(myTurn);
+  var open = base.filter(function (v) { return v.state !== 'مغلقة'; });
+  var closed = base.filter(function (v) { return v.state === 'مغلقة'; });
+
+  document.getElementById('kAll').textContent = base.length;
+  document.getElementById('kMine').textContent = mine.length;
+  document.getElementById('kOpen').textContent = open.length;
+  document.getElementById('kClosed').textContent = closed.length;
+
+  var list = fs === 'mine' ? mine : fs === 'open' ? open : fs === 'closed' ? closed : base;
+  LAST_LIST = list;
+  document.getElementById('countNote').textContent = list.length + ' بلاغ من أصل ' + DATA.length +
+    (document.getElementById('fMonth').value ? ' في الشهر المحدّد' : '');
+
+  document.getElementById('rows').innerHTML = list.length
+    ? list.map(function (v) {
+        var turn = myTurn(v);
+        return '<tr' + (turn ? ' style="background:#FFFBEB"' : '') + '>' +
+          '<td style="font-weight:800">' + esc(v.id) + Mirage.entryLine(v) + '</td>' +
+          '<td style="white-space:nowrap">' + esc(v.date) + '</td>' +
+          '<td><span class="cell-link" onclick="openOne(\'' + esc(v.id) + '\')">' + esc(v.offender) + '</span>' +
+            (Mirage.onProbation(v.hire_date, v.date) ? ' ' + Mirage.probationTag(v.hire_date, v.date) : '') +
+            (String(v.employee_id).indexOf('U:') === 0 ? ' <span class="tag tag-gray">مستخدم</span>' : '') + '</td>' +
+          '<td>' + esc(v.project || '—') + '</td>' +
+          '<td>' + esc(v.type) + '</td>' +
+          '<td>' + (v.repeat || '—') + '</td>' +
+          '<td>' + esc(v.reporter) + '</td>' +
+          '<td>' + Mirage.tag(v.state) + '</td>' +
+          '<td>' + esc(v.decision || '—') + '</td>' +
+          '<td><button class="btn ' + (turn ? 'btn-primary' : 'btn-ghost') + ' btn-sm" ' +
+            'onclick="openOne(\'' + esc(v.id) + '\')">' + (turn ? 'إبداء الرأي' : 'عرض') + '</button></td>' +
+          '</tr>';
+      }).join('')
+    : '<tr><td colspan="10" class="td-empty">لا بلاغات مطابقة للتصفية.</td></tr>';
+}
+
+/** قرار مالي: خصم أو غرامة أو حسم من الراتب — يُقرأ من القرار النهائي أو الجزاء المقترح */
+function isMoney(v) {
+  return /خصم|غرام|اقتطاع|حسم|مالي|الراتب|الأجر/.test(String(v.decision || v.penalty || ''));
+}
+
+/** وصف التصفية الحالية بالكلمات، يُطبع في ترويسة الورقة */
+function scopeText() {
+  var fm = document.getElementById('fMoney').value;
+  var fs = document.getElementById('fState').value;
+  return [
+    document.getElementById('fMonth').value ? Mirage.monthName(document.getElementById('fMonth').value) : 'كل الأشهر',
+    document.getElementById('fProject').value || 'كل المشاريع',
+    document.getElementById('fType').value || 'كل أنواع المخالفات',
+    fs === 'mine' ? 'بانتظار رأيي' : fs === 'open' ? 'قيد الاعتماد' : fs === 'closed' ? 'المغلقة' : 'كل الحالات',
+    fm === 'money' ? 'القرارات المالية فقط' : fm === 'nomoney' ? 'القرارات غير المالية' : 'كل القرارات'
+  ].join(' · ');
+}
+
+function sheetHead(title, note) {
+  return '<div class="p-head"><h1>' + esc(title) + '</h1>' +
+    '<p class="p-sub">' + esc(note) + ' · أُصدر في ' +
+    esc(Mirage.ltr(new Date().toISOString().slice(0, 10))) +
+    ' · بمعرفة ' + esc(Mirage.session().realName) + '</p></div>';
+}
+
+function sheetRows(list) {
+  return '<table><thead><tr>' +
+      '<th>الرقم</th><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>المخالفة</th>' +
+      '<th>التكرار</th><th>القرار / الجزاء</th><th>مالي</th><th>الحالة</th>' +
+    '</tr></thead><tbody>' +
+    list.map(function (v) {
+      return '<tr><td>' + esc(v.id) + '</td><td>' + esc(v.date) + '</td>' +
+        '<td>' + esc(v.offender) + '</td><td>' + esc(v.project || '—') + '</td>' +
+        '<td>' + esc(v.code + ' — ' + v.type) + '</td><td>' + (v.repeat || '—') + '</td>' +
+        '<td>' + esc(v.decision || v.penalty || '—') + '</td>' +
+        '<td>' + (isMoney(v) ? 'نعم' : 'لا') + '</td>' +
+        '<td>' + esc(v.state || '—') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+}
+
+var SIGN = '<div class="p-sign"><div>مسؤول القسم</div><div>شؤون الموظفين</div><div>المدير العام</div></div>';
+
+/** تقرير كامل: ملخّص بالأرقام ثم الجدول — يُحفظ PDF من نافذة الطباعة */
+function printReport() {
+  var list = LAST_LIST.slice();
+  if (!list.length) return Mirage.note('لا بلاغات في التصفية الحالية.', 'لا شيء في التقرير');
+
+  var closed = list.filter(function (v) { return v.state === 'مغلقة'; });
+  var money  = list.filter(isMoney);
+
+  document.getElementById('printArea').innerHTML =
+    sheetHead('تقرير المخالفات والقرارات', scopeText()) +
+    '<div class="p-grid">' +
+      '<div><b>عدد البلاغات:</b> ' + list.length + '</div>' +
+      '<div><b>المغلقة بقرار نهائي:</b> ' + closed.length + '</div>' +
+      '<div><b>قيد الاعتماد:</b> ' + (list.length - closed.length) + '</div>' +
+      '<div><b>القرارات المالية:</b> ' + money.length + '</div>' +
+    '</div>' +
+    sheetRows(list) + SIGN;
+
+  window.print();     // في نافذة الطباعة يُختار «حفظ بصيغة PDF» وجهةً للحفظ
+}
+
+/** القرارات وحدها بحسب الفلتر الحالي — للطباعة الورقية */
+function printList() {
+  var list = LAST_LIST.filter(function (v) { return v.decision || v.state === 'مغلقة'; });
+  if (!list.length) {
+    return Mirage.note('لا قرارات صادرة في التصفية الحالية. جرّب «حفظ التقرير PDF» لطباعة البلاغات كلها.',
+                       'لا قرارات للطباعة');
+  }
+  document.getElementById('printArea').innerHTML =
+    sheetHead('قرارات المخالفات', scopeText() + ' — ' + list.length + ' قرار') +
+    sheetRows(list) + SIGN;
+  window.print();
+}
+
+/** ورقة قرار لبلاغ واحد بتفاصيله وآراء محطاته */
+function printOne(id) {
+  var v = DATA.filter(function (x) { return x.id === id; })[0];
+  if (!v) return;
+  var log = [];
+  try { log = JSON.parse(v.log || '[]'); } catch (e) { log = []; }
+
+  var f = function (label, value) {
+    return '<div><b>' + esc(label) + ':</b> ' + esc(value || '—') + '</div>';
+  };
+
+  document.getElementById('printArea').innerHTML =
+    '<div class="p-head"><h1>قرار مخالفة — ' + esc(v.id) + '</h1>' +
+    '<p class="p-sub">طُبع في ' + esc(Mirage.ltr(new Date().toISOString().slice(0, 10))) +
+    ' · بمعرفة ' + esc(Mirage.session().realName) + '</p></div>' +
+    '<div class="p-grid">' +
+      f('الموظف المخالف', v.offender) + f('الوظيفة', v.offender_job) +
+      f('المشروع', v.project) + f('تاريخ التوظيف', v.hire_date) +
+      f('تاريخ المخالفة', v.date) + f('المُبلغ', v.reporter) +
+      f('رقم المخالفة ونوعها', v.code + ' — ' + v.type) + f('درجة التكرار', v.repeat || '—') +
+      f('الجزاء بحسب اللائحة', v.penalty) + f('حالة البلاغ', v.state) +
+    '</div>' +
+    '<div class="p-box"><b>وصف الواقعة:</b><br>' + esc(v.details || '—') + '</div>' +
+    '<div class="p-box"><b>رأي الموظف المخالف:</b><br>' + esc(v.opinion || '—') +
+      '<br><b>التوقيع:</b> ' + esc(v.sign_state || 'لم يُسجَّل إقرار') + '</div>' +
+    (log.length
+      ? '<div class="p-box"><b>آراء المحطات بالترتيب:</b><br>' + log.map(function (st, i) {
+          return (i + 1) + ') <b>' + esc(st.station) + ' — ' + esc(st.by) + '</b> (' + esc(st.at) + ')<br>' +
+            esc(st.opinion || '') + (st.decision ? '<br><b>الجزاء/القرار:</b> ' + esc(st.decision) : '');
+        }).join('<br><br>') + '</div>'
+      : '') +
+    '<div class="p-box"><b>القرار النهائي:</b> ' + esc(v.decision || 'لم يصدر بعد') +
+      (v.closed ? ' — أُغلق في ' + esc(v.closed) : '') +
+      '<br><b>قرار مالي:</b> ' + (isMoney(v) ? 'نعم' : 'لا') + '</div>' +
+    '<div class="p-sign"><div>مسؤول القسم</div><div>شؤون الموظفين</div><div>المدير العام</div></div>';
+
+  window.print();
+}
+
+function openOne(id) {
+  var v = DATA.filter(function (x) { return x.id === id; })[0];
+  if (!v) return;
+  var turn = myTurn(v);
+  var closed = v.state === 'مغلقة';
+  var route = v.route || [];
+  var isFinal = route.length ? v.step >= route.length - 1 : true;
+  // أسماء المسار يراها مدير النظام وحده
+  var nextName = ISADMIN && route.length && !isFinal ? route[v.step + 1].name : '';
+
+  var log = [];
+  try { log = JSON.parse(v.log || '[]'); } catch (e) { log = []; }
+
+  document.getElementById('mTitle').textContent = 'بلاغ ' + v.id + ' — ' + v.offender;
+  document.getElementById('mBody').innerHTML =
+    (ISADMIN && route.length
+      ? '<div class="field"><label>مسار الاعتماد</label>' + Mirage.routeHtml(route, v.step, closed) + '</div>'
+      : '') +
+    '<div class="grid-2" style="margin-bottom:6px">' +
+      row('الموظف', v.offender + (v.employee_id && v.employee_id.indexOf('U:') !== 0 ? ' (' + v.employee_id + ')' : '') +
+          (v.employee_id.indexOf('U:') === 0 ? ' — مستخدم في النظام' : '')) +
+      row('الوظيفة', v.offender_job) +
+      row('تاريخ التوظيف', v.hire_date) +
+      row('المشروع', v.project) +
+      row('تاريخ المخالفة', v.date) +
+      row('تاريخ التسجيل', v.logged) +
+      row('رقم المخالفة ونوعها', v.code + ' — ' + v.type) +
+      row('التكرار', v.repeat ? 'الدرجة ' + v.repeat : '—') +
+    '</div>' +
+    (Mirage.onProbation(v.hire_date, v.date)
+      ? '<div class="alert alert-warn">الموظف كان <b>تحت التجربة</b> في تاريخ المخالفة (تنتهي تجربته في ' +
+        '<span style="white-space:nowrap">' + esc(Mirage.ltr(Mirage.probationEnd(v.hire_date))) + '</span>).</div>'
+      : '') +
+    '<div class="alert alert-info">الجزاء المقترح بحسب سجل المخالفات: <b>' + esc(v.penalty || 'غير محدد') + '</b></div>' +
+    block('وصف الواقعة', v.details) +
+    block('رأي الموظف المخالف', v.opinion) +
+    '<div class="field"><label>توقيع الموظف</label>' +
+      (v.sign_path
+        ? '<div id="sigWrap" class="sign-box" style="padding:10px;border-style:solid">' +
+          '<span style="font-size:13px;color:var(--text-muted)">جارٍ تحميل التوقيع…</span></div>' +
+          '<div class="hint">' + esc(v.sign_state || '') +
+          (v.sign_at ? ' — ' + esc(Mirage.ltr(v.sign_at)) : '') + '</div>'
+        : '<div class="alert ' + (v.sign_state === 'امتنع عن التوقيع' ? 'alert-warn' : 'alert-info') +
+          '" style="margin:0">' + esc(v.sign_state || 'لم يُسجَّل إقرار') +
+          (v.sign_at ? ' — ' + esc(Mirage.ltr(v.sign_at)) : '') + '</div>') +
+    '</div>' +
+    (log.length
+      ? '<div class="field"><label>آراء المحطات بالترتيب</label>' + log.map(function (s) {
+          return '<div class="approval-step"><div class="who">' + esc(s.station) + ' — ' + esc(s.by) + '</div>' +
+            '<div class="when">' + esc(s.at) + '</div>' +
+            '<div class="what">' + esc(s.opinion || '') +
+            (s.decision ? '<br><b>' + (s === log[log.length - 1] && closed ? 'القرار النهائي: ' : 'الجزاء المقترح: ') +
+              '</b>' + esc(s.decision) : '') + '</div></div>';
+        }).join('') + '</div>'
+      : '') +
+    (TOP ? '<div class="btn-row" style="margin:0 0 6px"><button class="btn btn-ghost btn-sm" type="button" ' +
+           'onclick="printOne(\'' + esc(v.id) + '\')">🖨️ طباعة هذا القرار (PDF)</button></div>' : '') +
+    (closed
+      ? '<div class="alert alert-info" style="margin:0">أُغلق بتاريخ ' + esc(Mirage.ltr(v.closed)) +
+        '<br><b>القرار النهائي: </b>' + esc(v.decision || '—') + '</div>'
+      : (turn
+          ? '<hr style="border:0;border-top:1px solid var(--border-light);margin:22px 0">' +
+            opinionForm(v) +
+            '<div class="btn-row">' +
+              (isFinal
+                ? '<button class="btn btn-dark" id="apBtn" onclick="decide(\'' + esc(v.id) + '\',1)">' +
+                  '<span class="btn-text">إصدار القرار النهائي وإغلاق البلاغ</span><span class="spinner"></span></button>'
+                : '<button class="btn btn-primary" id="apBtn" onclick="decide(\'' + esc(v.id) + '\',0)">' +
+                  '<span class="btn-text">حفظ رأيي وإحالته' + (nextName ? ' إلى ' + esc(nextName) : '') +
+                  '</span><span class="spinner"></span></button>' +
+                  (ISADMIN ? '<button class="btn btn-ghost" onclick="decide(\'' + esc(v.id) + '\',1)">إغلاق مبكر (مدير النظام)</button>' : '')) +
+            '</div>'
+          : '<div class="alert alert-warn" style="margin:0">البلاغ الآن بانتظار: <b>' + esc(v.station || 'الاعتماد العام') +
+            '</b>. يصلك دورك تلقائياً مع إشعار حين يُحال إليك.</div>'));
+
+  document.getElementById('back').classList.add('open');
+
+  if (v.sign_path) {
+    Mirage.api('violation_signature', { path: v.sign_path }).then(function (r) {
+      var w = document.getElementById('sigWrap');
+      if (!w) return;
+      w.innerHTML = r.url
+        ? '<img src="' + r.url + '" alt="توقيع الموظف" style="max-width:100%;display:block">'
+        : '<span style="font-size:13px;color:var(--text-muted)">تعذّر تحميل صورة التوقيع</span>';
+    });
+  }
+}
+
+/**
+ * نموذج رأي المحطة كما في نموذج المخالفات الورقي:
+ * ثلاثة خيارات، ثم الجزاء من اللائحة أو اقتراح خارجها، ثم السبب.
+ */
+/**
+ * نموذج رأي المحطة: احتمال واحد لا غير — اختياره يُطفئ سواه.
+ * «المخالفة بحسب اللائحة» تجلب درجات الجزاء من لائحة المخالفات نفسها.
+ */
+function opinionForm(v) {
+  var tiers = CATALOG[v.code] || [];
+  var idx = Math.max(0, (Number(v.repeat) || 1) - 1);
+
+  return '<div class="field"><label>رأي المحطة <span class="req">*</span> ' +
+    '<span class="hint" style="display:inline;margin:0;font-weight:700">— احتمال واحد</span></label>' +
+    '<div class="opt-col">' +
+
+      opt('none', 'لم يثبت مخالفة') +
+      opt('train', 'نقترح توجيه الموظف وتدريبه') +
+
+      '<label class="check-item" id="optListWrap">' +
+        '<input type="radio" name="vOpt" value="list" onchange="togglePen()">' +
+        '<span>المخالفة بحسب لائحة الجزاءات والمخالفات تستوجب:' +
+          (tiers.length
+            ? '<select id="dPenalty" disabled style="margin-top:8px" onclick="event.preventDefault()">' +
+                tiers.map(function (t, i) {
+                  return '<option value="' + esc(t) + '"' + (i === idx ? ' selected' : '') + '>' +
+                    'الدرجة ' + TIER_NAMES[i] + ' — ' + esc(t) + '</option>';
+                }).join('') + '</select>' +
+              '<span class="hint" style="display:block;margin:4px 0 0">تكرار هذه المخالفة عند الموظف: الدرجة ' +
+              TIER_NAMES[idx] + '</span>'
+            : '<span class="hint" style="display:block;margin:6px 0 0">لا درجات جزاء مسجّلة لهذه المخالفة في اللائحة.</span>') +
+        '</span></label>' +
+
+      '<label class="check-item" id="optOffWrap">' +
+        '<input type="radio" name="vOpt" value="off" onchange="togglePen()">' +
+        '<span>المخالفة غير مدرجة ضمن اللائحة، ولهذا نقترح:' +
+          '<input type="text" id="dProposal" disabled style="margin-top:8px" maxlength="200" ' +
+          'placeholder="اكتب الجزاء أو الإجراء الذي تقترحه">' +
+        '</span></label>' +
+
+    '</div></div>' +
+
+    '<div class="field"><label for="dReason">السبب <span class="req">*</span></label>' +
+      '<textarea id="dReason" rows="4" placeholder="مبرّرات رأيك في هذه المخالفة"></textarea></div>';
+}
+
+function opt(val, text) {
+  return '<label class="check-item"><input type="radio" name="vOpt" value="' + val + '" onchange="togglePen()">' +
+    '<span>' + esc(text) + '</span></label>';
+}
+
+/** اختيار احتمال يُطفئ سواه، ولا يُفتح حقل إلا لصاحبه */
+function togglePen() {
+  var pick = document.querySelector('input[name="vOpt"]:checked');
+  var val = pick ? pick.value : '';
+  var pen = document.getElementById('dPenalty');
+  var prop = document.getElementById('dProposal');
+  if (pen) pen.disabled = val !== 'list';
+  if (prop) { prop.disabled = val !== 'off'; if (val !== 'off') prop.value = ''; }
+  document.querySelectorAll('input[name="vOpt"]').forEach(function (r) {
+    r.closest('.check-item').classList.toggle('checked', r.checked);
+  });
+  if (val === 'off' && prop) prop.focus();
+}
+
+function row(label, value) {
+  return '<div class="field" style="margin-bottom:12px"><label>' + esc(label) + '</label>' +
+         '<input type="text" value="' + esc(value || '—') + '" readonly></div>';
+}
+function block(label, value) {
+  return '<div class="field"><label>' + esc(label) + '</label>' +
+         '<div style="background:var(--bg-app);border:1px solid var(--border-light);border-radius:var(--radius-md);' +
+         'padding:14px;font-size:13.5px;white-space:pre-wrap">' + esc(value || '—') + '</div></div>';
+}
+
+function decide(id, close) {
+  var pick = document.querySelector('input[name="vOpt"]:checked');
+  var pen  = document.getElementById('dPenalty');
+  var prop = ((document.getElementById('dProposal') || {}).value || '').trim();
+  var reason = ((document.getElementById('dReason') || {}).value || '').trim();
+
+  if (!pick) return Mirage.note('اختر احتمالاً واحداً من خيارات رأي المحطة.', 'الرأي مطلوب');
+  if (pick.value === 'list' && (!pen || !pen.value)) {
+    return Mirage.note('اختر درجة الجزاء من اللائحة.', 'الجزاء مطلوب');
+  }
+  if (pick.value === 'off' && !prop) {
+    return Mirage.note('اكتب الجزاء أو الإجراء الذي تقترحه.', 'الاقتراح مطلوب');
+  }
+  if (!reason) return Mirage.note('اكتب سبب رأيك.', 'السبب مطلوب');
+
+  var TXT = {
+    none:  'لم يثبت مخالفة',
+    train: 'نقترح توجيه الموظف وتدريبه',
+    list:  'المخالفة بحسب لائحة الجزاءات والمخالفات تستوجب: ' + (pen ? pen.value : ''),
+    off:   'المخالفة غير مدرجة ضمن اللائحة، ولهذا نقترح: ' + prop
+  };
+  var decision = pick.value === 'list' ? pen.value
+               : pick.value === 'off'  ? prop
+               : pick.value === 'none' ? 'لم يثبت مخالفة — لا جزاء'
+               : 'توجيه الموظف وتدريبه';
+
+  var opinion = TXT[pick.value] + '\nالسبب: ' + reason;
+
+  var btn = document.getElementById('apBtn');
+  Mirage.busy(btn, true);
+  Mirage.api('violation_decide', {
+    id: id, opinion: opinion, decision: decision, close: close ? '1' : '0'
+  }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    closeModal();
+    Mirage.ok(res.closed ? 'أُغلق البلاغ بالقرار النهائي، وأُشعِر المُبلغ.'
+                         : (ISADMIN ? 'حُفظ رأيك وأُحيل البلاغ إلى ' + res.next + '، وأُشعِر بذلك.'
+                                    : 'حُفظ رأيك وأُحيل البلاغ إلى المحطة التالية.'), 'تم');
+    load();
+  });
+}
+
+function closeModal() { document.getElementById('back').classList.remove('open'); }
+</script>
+</body>
+</html>

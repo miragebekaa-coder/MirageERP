@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>تكليف مهمة ومتابعة | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <form id="fForm">
+    <div class="card">
+      <div class="card-head"><div><h2>البيانات الأساسية</h2><p>المشروع الذي تتعلق به المهمة ومُدخل البيانات</p></div></div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="project_name">المشروع المستهدف</label>
+          <select id="project_name" required><option value="">جارٍ التحميل…</option></select>
+          <div class="hint" id="project_nameNote"></div>
+        </div>
+        <div class="field">
+          <label>مُدخل البيانات</label>
+          <input type="text" id="supervisor_name" readonly>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="border-right:4px solid var(--brand-followup)">
+      <div class="card-head"><div><h2>تفاصيل المهمة</h2><p>اكتب ما يجب إنجازه بدقة تكفي لمن سيتابعه بعدك</p></div></div>
+
+      <div class="field">
+        <label for="description">وصف المهمة أو العمل العالق</label>
+        <textarea id="description" rows="3" placeholder="ما المطلوب إنجازه بالتحديد؟" required></textarea>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="entity">الجهة المعنية بالتنفيذ</label>
+          <select id="entity" required><option value="">جارٍ التحميل…</option></select>
+          <div class="hint">القائمة تجمع المراكز والمشاريع معاً</div>
+        </div>
+        <div class="field">
+          <label for="classification">الأهمية</label>
+          <select id="classification" required>
+            <option value="">حدّد الأهمية…</option>
+            <option value="عاجلة">عاجلة — تدخّل فوري</option>
+            <option value="مهمة">مهمة — متوسطة</option>
+            <option value="عادية">عادية — روتينية</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="status">الحالة الحالية</label>
+          <select id="status" required>
+            <option value="عالقة">عالقة — لم تبدأ</option>
+            <option value="قيد التنفيذ" selected>قيد التنفيذ</option>
+            <option value="أنجزت">أنجزت بالكامل</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="due_date">تاريخ الاستحقاق</label>
+          <input type="date" id="due_date">
+          <div class="hint">اختياري — تظهر به المهمة في رزنامة «مهامي». وإن تركته فيومها يوم تسجيلها.</div>
+        </div>
+        <div class="field" id="assignWrap">
+          <label for="assignee">لمن هذه المهمة؟</label>
+          <select id="assignee"></select>
+          <div class="hint" id="assignHint">«لنفسي» تظهر في صفحة «مهامي» ضمن «ما سجّلتُه». ومن تكلّفه من فريقك يُشعَر فوراً وتظهر عنده ضمن «ما كُلّفتُ به».</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="notes">ملاحظات وتحديثات</label>
+        <textarea id="notes" rows="2" placeholder="سياق إضافي، أو ما تم إنجازه حتى الآن"></textarea>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-followup" id="sendBtn">
+        <span class="btn-text">تسجيل المهمة</span><span class="spinner"></span>
+      </button>
+      <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+    </div>
+  </form>
+
+</div>
+</div>
+</div>
+
+<script>
+var u = Mirage.boot({
+  page: 'followups',
+  title: 'تكليف مهمة ومتابعة',
+  sub: 'تسجيل الأعمال العالقة وتوجيهها للجهة المسؤولة'
+});
+
+if (u) {
+  document.getElementById('supervisor_name').value = u.realName;
+
+  Mirage.lists().then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+
+    Mirage.fillProjectScope('project_name', res, { single: true });
+    Mirage.fillSelect('entity', res.entities || [], 'اختر الجهة المعنية…');
+
+    var team = res.team || [];
+    var sel = document.getElementById('assignee');
+    sel.innerHTML =
+      '<option value="' + esc(u.realName) + '" selected>لنفسي — ' + esc(u.realName) + '</option>' +
+      (team.length
+        ? '<optgroup label="تكليف أحد فريقي">' + team.map(function (m) {
+            return '<option value="' + esc(m.name) + '">' + esc(m.name) +
+              (m.project ? ' — ' + esc(m.project) : '') + '</option>';
+          }).join('') + '</optgroup>'
+        : '') +
+      '<option value="">بلا تكليف مباشر (متابعة عامة)</option>';
+    if (!team.length) {
+      document.getElementById('assignHint').textContent =
+        '«لنفسي» تظهر في صفحة «مهامي». لا يتبع لك أحد في الهيكل الإداري، فلا يمكنك تكليف غيرك.';
+    }
+  });
+
+  document.getElementById('fForm').onsubmit = function (e) {
+    e.preventDefault();
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+    Mirage.api('followup_new', {
+      project_name:    document.getElementById('project_name').value,
+      supervisor_name: u.realName,
+      description:     document.getElementById('description').value.trim(),
+      entity:          document.getElementById('entity').value,
+      classification:  document.getElementById('classification').value,
+      status:          document.getElementById('status').value,
+      assignee:        document.getElementById('assignee').value,
+      due_date:        document.getElementById('due_date').value,
+      notes:           document.getElementById('notes').value.trim()
+    }).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      var toSelf = document.getElementById('assignee').value === u.realName;
+      Mirage.ok('رقم المهمة ' + res.id + (toSelf ? '. تجدها في صفحة «مهامي».' : ''), 'سُجّلت المهمة')
+        .then(function () { location.href = Mirage.can('my_tasks') && toSelf ? 'my_tasks.html' : 'index.html'; });
+    });
+  };
+}
+</script>
+</body>
+</html>

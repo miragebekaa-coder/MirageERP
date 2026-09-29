@@ -1,0 +1,2108 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>إدارة النظام | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="tabs">
+    <button class="tab active" data-tab="lists">إعدادات القوائم</button>
+    <button class="tab" data-tab="users">المستخدمون والصلاحيات</button>
+    <button class="tab" data-tab="catalog">لائحة المخالفات</button>
+    <button class="tab" data-tab="flows">مسارات العمل</button>
+    <button class="tab" data-tab="merge">توحيد البيانات</button>
+    <button class="tab" data-tab="io">استيراد وتصدير</button>
+    <button class="tab" data-tab="bk">نسخ احتياطي</button>
+  </div>
+
+  <!-- ═══════════ ١. إعدادات القوائم ═══════════ -->
+  <div class="tab-panel active" id="tab-lists">
+    <div class="alert alert-info">
+      أي عنصر تضيفه هنا يظهر فوراً في كل القوائم المنسدلة في النظام. وزر (+) الظاهر بجانب القوائم في بقية الصفحات يضيف إلى هذه الجداول نفسها، وهو متاح لمدير النظام فقط.
+    </div>
+
+    <div class="card broadcast-card">
+      <div class="card-head">
+        <div><h2>إرسال إشعار</h2>
+        <p>لكل المستخدمين، أو لأقسام بكاملها، أو لمشاريع، أو لأشخاص بأعينهم — ويظهر في جرس الإشعارات لدى كل مستلم</p></div>
+      </div>
+      <div id="composer"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>سجل الإشعارات المرسلة</h2>
+        <p>كل إشعار محفوظ بعنوانه وتاريخه ومضمونه ومشروعه ومستلميه. اضغط على المستلمين لعرض أسمائهم</p></div>
+      </div>
+      <div id="noticeLog"></div>
+    </div>
+
+    <div class="card" id="pushAdmin">
+      <div class="card-head">
+        <div><h2>📲 إشعارات الهاتف</h2><p>تجهيز لمرة واحدة: بعدها يفعّلها كل مستخدم على جهازه من صفحة الإشعارات</p></div>
+      </div>
+      <div id="pushAdminBody"><div class="hint">جارٍ الفحص…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>فحص الاتصال بالخادم</h2>
+        <p>استخدمه إن ظهرت رسالة «الخادم أعاد صفحة بدل بيانات» في أي صفحة</p></div>
+        <button class="btn btn-dark btn-sm" id="pingBtn" type="button">
+          <span class="btn-text">فحص الآن</span><span class="spinner"></span>
+        </button>
+      </div>
+      <div id="pingResult" style="font-size:13.5px;color:var(--text-muted)">لم يُجرَ فحص بعد.</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-head"><div><h2>المراكز والأقسام</h2><p>رئيس كل قسم ونوعه يحدّدان محطات مسار الاعتماد</p></div></div>
+        <div class="btn-row" style="margin-bottom:18px">
+          <input type="text" id="newCenter" placeholder="مثال: قسم العمليات" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addItem('centers','newCenter')">إضافة</button>
+        </div>
+        <div id="centerList"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>الصلاحيات والأدوار</h2><p>تُستخدم في المسارات والمدير المباشر</p></div></div>
+        <div class="btn-row" style="margin-bottom:18px">
+          <input type="text" id="newRole" placeholder="مثال: Ope1" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addItem('roles','newRole')">إضافة</button>
+        </div>
+        <div class="chip-list" id="roleList"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>الوظائف</h2>
+          <p>مجموعتان: «عامة» يراها كل المستخدمين، و«إشرافية وإدارية» يراها المسؤولون (مستوى 1 فأعلى)</p></div></div>
+
+        <div class="btn-row" style="margin-bottom:12px">
+          <input type="text" id="newJob" placeholder="مثال: عامل نظافة" style="flex:1">
+          <select id="newJobLevel" style="max-width:220px">
+            <option value="0">وظائف عامة</option>
+            <option value="1">وظائف إشرافية وإدارية</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="addJob()">إضافة</button>
+        </div>
+
+        <div class="hint" style="margin:0 0 6px">وظائف عامة</div>
+        <div class="chip-list" id="jobList0"></div>
+        <div class="hint" style="margin:14px 0 6px">وظائف إشرافية وإدارية</div>
+        <div class="chip-list" id="jobList1"></div>
+      </div>
+
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-head"><div><h2>مستويات الصلاحية</h2>
+          <p>لكل مستوى أثره في النظام. الحذف ممنوع ما دام عليه مستخدمون — تنقلهم أولاً فلا تُفقد بيانات</p></div></div>
+
+        <div class="btn-row" style="margin-bottom:16px">
+          <input type="number" id="newLevel" min="0" step="1" placeholder="الرقم" style="max-width:120px">
+          <input type="text" id="newLevelName" placeholder="اسم المستوى" style="flex:1">
+          <input type="text" id="newLevelNote" placeholder="أثره: ماذا يرى وماذا يفعل" style="flex:2">
+          <button class="btn btn-primary btn-sm" onclick="saveLevel()">حفظ المستوى</button>
+        </div>
+
+        <div class="alert alert-warn" style="margin:0 0 14px">
+          <b>انتبه:</b> أي مستوى رقمه <b>3 فأعلى</b> يمنح صلاحيات مدير النظام كاملة (إدارة النظام، الحذف، توحيد البيانات).
+          والمستويات 0 و1 و2 يقوم عليها النظام: يمكن تغيير اسمها ووصفها ولا تُحذف.
+        </div>
+
+        <div class="table-wrap"><table>
+          <thead><tr><th>المستوى</th><th>الاسم</th><th>أثره في النظام</th><th>المستخدمون</th><th></th></tr></thead>
+          <tbody id="levelRows"><tr><td colspan="5" class="td-empty">جارٍ التحميل…</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>موضوعات المراسلات</h2><p>تصنيفات الملفات المُرسلة</p></div></div>
+        <div class="btn-row" style="margin-bottom:18px">
+          <input type="text" id="newSubject" placeholder="مثال: مخاطبة رسمية" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="addItem('subjects','newSubject')">إضافة</button>
+        </div>
+        <div class="chip-list" id="subjectList"></div>
+      </div>
+
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>المشاريع والأعداد التعاقدية</h2>
+        <p>الأعداد المطلوبة حسب العقد، وتُقرأ تلقائياً في تقرير الجهوزية</p></div>
+      </div>
+
+      <div class="grid-4" style="margin-bottom:10px">
+        <div class="field" style="margin:0">
+          <label for="newProject">اسم المشروع</label>
+          <input type="text" id="newProject" placeholder="مثال: مستشفى دار الحكمة">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="newW">عدد العمال المطلوب</label>
+          <input type="number" id="newW" min="0" value="0">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="newS">عدد المشرفين المطلوب</label>
+          <input type="number" id="newS" min="0" value="0">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="newM">عدد مديري المشروع المطلوب</label>
+          <input type="number" id="newM" min="0" value="0">
+        </div>
+      </div>
+      <div class="btn-row" style="margin-bottom:20px">
+        <button class="btn btn-primary" onclick="addProject()">إضافة المشروع</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>المشروع</th><th style="width:140px">عمال</th><th style="width:140px">مشرفون</th>
+            <th style="width:150px">مديرو مشروع</th><th style="width:110px">الإجمالي</th><th style="width:110px"></th>
+          </tr></thead>
+          <tbody id="projectRows"><tr><td colspan="6" style="text-align:center;color:var(--text-muted)">جارٍ التحميل…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">عدّل أي رقم في الجدول ثم انقر خارج الخانة ليُحفظ تلقائياً.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ٢. المستخدمون ═══════════ -->
+  <div class="tab-panel" id="tab-users">
+    <div class="card">
+      <div class="card-head">
+        <div><h2 id="userFormTitle">إضافة مستخدم جديد</h2>
+        <p>حدّد بيانات الموظف وصلاحياته والصفحات التي يراها في قائمته</p></div>
+        <button class="btn btn-ghost btn-sm" id="resetUserBtn" onclick="resetUserForm()" style="display:none">إلغاء التعديل</button>
+      </div>
+
+      <form id="userForm">
+        <div class="grid-3">
+          <div class="field">
+            <label for="f_username">اسم المستخدم</label>
+            <input type="text" id="f_username" required>
+            <div class="hint">يُستخدم للدخول، ولا يُغيَّر لاحقاً</div>
+          </div>
+          <div class="field">
+            <label for="f_password">كلمة المرور</label>
+            <input type="text" id="f_password">
+            <div class="hint" id="pwHint">مطلوبة للمستخدم الجديد</div>
+          </div>
+          <div class="field">
+            <label for="f_state">حالة الحساب</label>
+            <select id="f_state"><option value="نشط">نشط</option><option value="موقوف">موقوف</option></select>
+          </div>
+          <div class="field">
+            <label for="f_real_name">الاسم الحقيقي</label>
+            <input type="text" id="f_real_name" required>
+          </div>
+          <div class="field">
+            <label for="f_job_title">المسمى الوظيفي</label>
+            <select id="f_job_title"></select>
+          </div>
+          <div class="field">
+            <label for="f_center">المركز أو القسم</label>
+            <select id="f_center" required></select>
+            <div class="hint">يُثبَّت تلقائياً في كل نموذج يفتحه</div>
+          </div>
+          <div class="field">
+            <label for="f_role">الصلاحية والدور</label>
+            <select id="f_role" required></select>
+          </div>
+          <div class="field">
+            <label for="f_manager">يتبع لـ (المسؤول المباشر)</label>
+            <select id="f_manager"></select>
+            <div class="hint">اختر الشخص بالاسم: هو أول من يعتمد نماذجه ويرى سجلاته</div>
+          </div>
+          <div class="field">
+            <label for="f_project">المشروع المرتبط</label>
+            <select id="f_project"></select>
+            <div class="hint">زر (+) يضيف مشروعاً جديداً بأعداده التعاقدية</div>
+          </div>
+          <div class="field">
+            <label for="f_access">مستوى الصلاحية</label>
+            <select id="f_access">
+              <option value="0">0 — مستخدم عادي</option>
+              <option value="1">1 — مدير (يرى فريقه)</option>
+              <option value="2">2 — إدارة عليا (يرى الكل)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:8px">
+          <label class="check-item" id="notifyWrap" style="max-width:520px">
+            <input type="checkbox" id="f_can_notify">
+            يستطيع إرسال إشعارات لكل من يتبعون له (مباشرة أو عبر مسؤولين وسيطين)
+          </label>
+        </div>
+
+        <div class="field" style="margin-top:8px">
+          <label>الصفحات المسموح له برؤيتها</label>
+          <div class="check-grid" id="pageChecks"></div>
+        </div>
+
+        <div class="btn-row" style="margin-top:22px">
+          <button type="submit" class="btn btn-primary" id="saveUserBtn">
+            <span class="btn-text">حفظ المستخدم</span><span class="spinner"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div id="managerWarn"></div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>المستخدمون المسجّلون</h2><p>اضغط اسم المستخدم لتعديل بياناته</p></div>
+        <span class="badge-pill" id="userCount">—</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>اسم المستخدم</th><th>الاسم</th><th>المركز</th><th>الصلاحية</th>
+            <th>يتبع لـ</th><th>المشروع</th><th>المستوى</th><th>الصفحات</th><th>الإشعار</th><th>الحالة</th><th></th>
+          </tr></thead>
+          <tbody id="userRows"><tr><td colspan="11" style="text-align:center;color:var(--text-muted)">جارٍ التحميل…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px">
+        زر 🔑 يضع كلمة مرور جديدة للحساب فوراً. ولا يستطيعها أحد سواك: مفتاح الخدمة الذي
+        يسمح بذلك يبقى في الخادم داخل دالة <b>set-password</b> ولا ينزل إلى المتصفح.
+        وكلمة مرورك أنت تغيّرها من زر اسمك في أعلى الصفحة.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>🔑 سجلّ كلمات المرور</h2><p>من غيّر كلمة مرور من، ومتى — لا تُحفَظ الكلمات نفسها</p></div>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="pwdLog()">عرض السجلّ</button>
+      </div>
+      <div id="pwdBox"><span class="hint">اضغط «عرض السجلّ».</span></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ لائحة المخالفات ═══════════ -->
+  <div class="tab-panel" id="tab-catalog">
+    <div class="alert alert-info">
+      الجزاء يتدرّج تلقائياً بحسب تكرار المخالفة نفسها على الموظف نفسه: أول مرة تُقترح الدرجة الأولى، وفي الثانية الثانية، وهكذا. والقرار النهائي يبقى لصاحب المحطة، والاقتراح مرجعي لا ملزم.
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2 id="catTitle">إضافة مخالفة إلى اللائحة</h2>
+        <p>اضغط رقم أي مخالفة في الجدول لتعديلها</p></div>
+        <button class="btn btn-ghost btn-sm" id="catCancel" onclick="resetCat()" style="display:none">إلغاء التعديل</button>
+      </div>
+
+      <form id="catForm">
+        <div class="grid-2">
+          <div class="field">
+            <label for="c_code">رقم المخالفة</label>
+            <input type="text" id="c_code" required placeholder="مثال: 7">
+            <div class="hint">معرّف وحيد لا يتكرّر</div>
+          </div>
+          <div class="field">
+            <label for="c_type">نوع المخالفة</label>
+            <input type="text" id="c_type" required placeholder="مثال: التدخين في مكان محظور">
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="field">
+            <label for="c_t1">الدرجة الأولى <span class="req">*</span></label>
+            <input type="text" id="c_t1" required placeholder="تنبيه شفهي">
+          </div>
+          <div class="field">
+            <label for="c_t2">الدرجة الثانية</label>
+            <input type="text" id="c_t2" placeholder="إنذار كتابي">
+          </div>
+          <div class="field">
+            <label for="c_t3">الدرجة الثالثة</label>
+            <input type="text" id="c_t3" placeholder="خصم يوم">
+          </div>
+          <div class="field">
+            <label for="c_t4">الدرجة الرابعة</label>
+            <input type="text" id="c_t4" placeholder="خصم ثلاثة أيام">
+          </div>
+          <div class="field">
+            <label for="c_t5">الدرجة الخامسة</label>
+            <input type="text" id="c_t5" placeholder="إحالة للتحقيق">
+          </div>
+          <div class="field">
+            <label for="c_t6">الدرجة السادسة</label>
+            <input type="text" id="c_t6" placeholder="صرف من الخدمة">
+          </div>
+        </div>
+        <div class="hint">التكرار السابع فما فوق يأخذ آخر درجة مملوءة.</div>
+
+        <div class="btn-row" style="margin-top:18px">
+          <button type="submit" class="btn btn-primary" id="catSave">
+            <span class="btn-text">حفظ المخالفة</span><span class="spinner"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>اللائحة الحالية</h2><p>هذه هي المخالفات التي تظهر للمشرفين في نموذج البلاغ</p></div>
+        <span class="badge-pill" id="catCount">—</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:80px">الرقم</th><th>نوع المخالفة</th>
+            <th>الأولى</th><th>الثانية</th><th>الثالثة</th><th>الرابعة</th><th>الخامسة</th><th>السادسة</th><th style="width:90px"></th>
+          </tr></thead>
+          <tbody id="catRows"><tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:26px">جارٍ التحميل…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ٣. مسارات العمل ═══════════ -->
+  <div class="tab-panel" id="tab-flows">
+    <div class="alert alert-info">
+      المسار ترتيب الأشخاص الذين يمرّ بهم النموذج. في بلاغ المخالفة يبدي كل واحد رأيه بدوره، والمحطة الأخيرة تُصدر القرار النهائي.
+      وفي بقية النماذج يُشعَر أصحاب المسار ويطّلعون على النموذج.
+      <b>المسار العام</b> يُطبَّق على الجميع، و<b>المسار الخاص</b> بمستخدم يحلّ محلّه له وحده.
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>بناء المسار</h2><p>اختر النموذج ولمن يُطبَّق، ثم أضف المحطات بالترتيب</p></div></div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="flowForm">النموذج اليومي</label>
+          <select id="flowForm"></select>
+        </div>
+        <div class="field">
+          <label for="flowUser">يُطبَّق على</label>
+          <select id="flowUser"></select>
+          <div class="hint" id="flowUserHint"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="flowStation">إضافة محطة</label>
+        <div class="btn-row">
+          <select id="flowStation" style="flex:1;min-width:220px"></select>
+          <button class="btn btn-dark btn-sm" type="button" onclick="addStation()">إضافة للمسار</button>
+        </div>
+        <div class="hint">«المسؤول المباشر» و«مسؤول القسم» يتغيّران بحسب من يقدّم النموذج. «رئيس قسم» يُقرأ من جدول الأقسام في تبويب إعدادات القوائم.</div>
+      </div>
+
+      <div class="field" style="margin-top:10px">
+        <label>المحطات بالترتيب</label>
+        <div class="flow-line" id="flowLine"></div>
+      </div>
+
+      <div class="btn-row" style="margin-top:22px">
+        <button class="btn btn-primary" id="saveFlowBtn" type="button" onclick="saveFlow()">
+          <span class="btn-text">حفظ المسار</span><span class="spinner"></span>
+        </button>
+        <button class="btn btn-ghost" type="button" onclick="loadFlow()">استعادة المحفوظ</button>
+        <button class="btn btn-danger btn-sm" type="button" id="dropUserFlow" onclick="dropUserFlow()" style="display:none">
+          حذف المسار الخاص والعودة للعام
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>معاينة: من سيعتمد فعلاً؟</h2><p>المسار محسوباً بأسماء الأشخاص لمستخدم تختاره</p></div>
+        <select id="previewUser" style="max-width:260px"></select>
+      </div>
+      <div id="previewBox"><span class="hint">اختر مستخدماً لمعاينة مساره في النموذج المحدّد أعلاه.</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>المسارات الخاصة الحالية</h2><p>المستخدمون الذين لهم مسار يختلف عن العام</p></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>المستخدم</th><th>النموذج</th><th>المحطات</th><th></th></tr></thead>
+        <tbody id="userFlowRows"><tr><td colspan="4" class="td-empty">—</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ═══ توحيد البيانات ═══ -->
+  <div class="tab-panel" id="tab-merge">
+    <div class="alert alert-info">
+      النظام يربط سجلاته بالاسم النصّي: الصلاحية، المسمى الوظيفي، القسم، المشروع، اسم الشخص.
+      فإذا حُذف اسم من القوائم أو كُتب بصيغة أخرى، بقيت السجلات القديمة معلّقة على الاسم القديم فاختفت من الشاشات.
+      من هنا تُوحِّد الاسم القديم على الجديد في <b>كل الجداول دفعة واحدة</b> — معاينة أولاً ثم تنفيذ.
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>⚠️ قيم مفقودة من القوائم</h2><p>أسماء تستعملها البيانات ولم تعد موجودة في قوائم النظام</p></div>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="scanOrphans()">فحص الآن</button>
+      </div>
+      <div id="orphanBox"><span class="hint">اضغط «فحص الآن» لعرض القيم المعلّقة.</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>توحيد قيمة</h2><p>القديم ← الجديد في كل السجلات المرتبطة</p></div></div>
+
+      <div class="grid-3">
+        <div class="field">
+          <label for="mgList">نوع القيمة</label>
+          <select id="mgList" onchange="fillMergeNew()">
+            <option value="roles">الصلاحية والدور</option>
+            <option value="jobs">المسمى الوظيفي</option>
+            <option value="centers">المركز أو القسم</option>
+            <option value="projects">المشروع</option>
+            <option value="subjects">موضوع المراسلة</option>
+            <option value="people">اسم مستخدم في النظام</option>
+            <option value="employees">اسم موظف</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mgOld">القيمة القديمة <span class="req">*</span></label>
+          <input type="text" id="mgOld" list="mgOldList" placeholder="اكتبها كما سُجّلت تماماً">
+          <datalist id="mgOldList"></datalist>
+        </div>
+        <div class="field">
+          <label for="mgNew">القيمة الجديدة <span class="req">*</span></label>
+          <input type="text" id="mgNew" list="mgNewList" placeholder="الاسم الذي تُوحَّد عليه">
+          <datalist id="mgNewList"></datalist>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" type="button" id="mgCheck" onclick="mergePreview()">
+          <span class="btn-text">فحص: كم سجلاً سيتغيّر؟</span><span class="spinner"></span>
+        </button>
+        <button class="btn btn-dark" type="button" id="mgApply" onclick="mergeApply()">
+          <span class="btn-text">تنفيذ التوحيد</span><span class="spinner"></span>
+        </button>
+      </div>
+
+      <div id="mergeBox" style="margin-top:18px"></div>
+    </div>
+  </div>
+
+  <!-- ═══ استيراد وتصدير ═══ -->
+  <div class="tab-panel" id="tab-io">
+    <div class="alert alert-info">
+      من هنا تُخرِج بيانات الموظفين والمستخدمين إلى ملف إكسل، وتُدخلها منه.
+      الملف ورقتان: <b>الموظفون</b> و<b>المستخدمون</b>، وورقة ثالثة بالقيم المسموحة تنسخ منها.
+      والاستيراد <b>لا يكرّر</b>: السطر يُطابَق بالرقم الوظيفي — أو باسم المستخدم — فالموجود يُحدَّث والجديد يُضاف.
+      وهذه الصفحة لمدير النظام وحده.
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>⬇️ التصدير</h2><p>البيانات كما هي اليوم، بأعمدة جاهزة لإعادة الاستيراد</p></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" type="button" id="exEmp" onclick="exportSheet('emp')">
+          <span class="btn-text">الموظفون</span><span class="spinner"></span>
+        </button>
+        <button class="btn btn-ghost" type="button" id="exUsr" onclick="exportSheet('usr')">
+          <span class="btn-text">المستخدمون</span><span class="spinner"></span>
+        </button>
+        <button class="btn btn-dark" type="button" id="exAll" onclick="exportSheet('all')">
+          <span class="btn-text">ملف واحد يضمّ الاثنين</span><span class="spinner"></span>
+        </button>
+      </div>
+      <p class="hint" style="margin-top:10px">
+        ملف التصدير يحمل عمودَي «أدخلها» و«تاريخ الإدخال» للاطّلاع، ويتجاهلهما الاستيراد.
+        وكلمات المرور لا تُصدَّر أبداً.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>📄 نموذج الاستيراد</h2><p>ملف فارغ بالأعمدة الصحيحة، وورقة القيم المسموحة من قوائم نظامك الحالية</p></div>
+        <button class="btn btn-ghost btn-sm" type="button" id="tplBtn" onclick="downloadTemplate()">
+          <span class="btn-text">تنزيل النموذج</span><span class="spinner"></span>
+        </button>
+      </div>
+      <p class="hint">
+        اكتب بياناتك تحت العناوين، ولا تغيّر أسماء الأعمدة ولا أسماء الأوراق.
+        الأعمدة الإلزامية: في الموظفين <b>الاسم</b>، وفي المستخدمين <b>اسم المستخدم</b> و<b>الاسم الكامل</b>
+        و<b>كلمة المرور</b> للحساب الجديد وحده.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>⬆️ الاستيراد</h2><p>افحص الملف أولاً — الفحص لا يكتب سطراً واحداً — ثم نفّذ</p></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="impFile">ملف إكسل <span class="req">*</span></label>
+          <input type="file" id="impFile" accept=".xlsx,.xls" onchange="pickFile()">
+        </div>
+        <div class="field">
+          <label>القيم غير المسجّلة في القوائم</label>
+          <label class="check-item" style="margin-top:4px">
+            <input type="checkbox" id="impAdd">
+            <span>أضِفها إلى القوائم بدل رفض السطر</span>
+          </label>
+          <p class="hint">بلا هذا الخيار يُرفض كل سطر فيه مشروع أو قسم أو وظيفة غير مسجّلة.</p>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" type="button" id="impCheck" onclick="runImport(false)" disabled>
+          <span class="btn-text">فحص الملف (معاينة)</span><span class="spinner"></span>
+        </button>
+        <button class="btn btn-dark" type="button" id="impApply" onclick="runImport(true)" disabled>
+          <span class="btn-text">تنفيذ الاستيراد</span><span class="spinner"></span>
+        </button>
+      </div>
+
+      <div id="impBox" style="margin-top:18px"></div>
+    </div>
+  </div>
+
+  <!-- ═══ نسخ احتياطي ═══ -->
+  <div class="tab-panel" id="tab-bk">
+    <div class="alert alert-info">
+      النسخة تضمّ <b>كل بيانات النظام</b>: الموظفين والمستخدمين والمخالفات والمهام والجهوزية والمراسلات
+      والقوائم والمسارات. تُحفَظ في مستودع خاص لا يفتحه إلا مدير النظام، ويمكن تنزيلها إلى جهازك.
+      <br>ملفات المراسلات نفسها وصور المستخدمين وحسابات الدخول تبقى في مكانها ولا تدخل النسخة.
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>📦 أخذ نسخة الآن</h2><p>لحظة واحدة، وتُسجَّل في السجلّ بحجمها وتاريخها</p></div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="bkLabel">وسم النسخة</label>
+          <input type="text" id="bkLabel" placeholder="مثال: قبل استيراد موظفي تشرين" maxlength="80">
+          <p class="hint">اختياري — يساعدك على معرفة سبب النسخة حين تعود إليها.</p>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="btn btn-dark" type="button" id="bkNew" onclick="backupNew()" style="width:100%">
+            <span class="btn-text">أخذ نسخة احتياطية</span><span class="spinner"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>🗂️ سجلّ النسخ</h2><p>كل نسخة بتاريخها وصاحبها وحجمها وعدد صفوفها</p></div>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="backupsLoad()">تحديث</button>
+      </div>
+      <div id="bkBox"><span class="hint">جارٍ التحميل…</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>♻️ الاستعادة من ملف على جهازك</h2>
+        <p>إن كانت النسخة منزَّلة عندك ولم تعد في المستودع</p></div>
+      </div>
+      <div class="field">
+        <label for="bkFile">ملف النسخة (.json)</label>
+        <input type="file" id="bkFile" accept=".json,application/json" onchange="restoreFromFile()">
+      </div>
+      <p class="hint">
+        الاستعادة تمحو البيانات الحالية وتضع مكانها بيانات النسخة. تُنفَّذ دفعة واحدة:
+        إن تعثّرت في أي جدول عادت البيانات كما كانت ولم يُمسّ شيء.
+      </p>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var LISTS = { centers: [], roles: [], projects: [], jobs: [], subjects: [], users: [], centerRows: [] };
+var STATIONS = [];
+var USER_FLOWS = [];
+var EDITING = null;
+var NOTICE_LOG = null;
+
+/* رموز المحطات الديناميكية — تُحلّ إلى أشخاص لحظة تقديم النموذج */
+var TOKENS = {
+  '@manager':   'المسؤول المباشر لمُقدِّم النموذج',
+  '@dept_head': 'مسؤول قسم مُقدِّم النموذج',
+  '@hr_head':   'رئيس قسم شؤون الموظفين',
+  '@gm':        'المدير العام'
+};
+
+Mirage.boot({
+  page: 'admin', title: 'إدارة النظام',
+  sub: 'غرفة التحكم بالبيانات والصلاحيات والمسارات', badge: 'Admin'
+});
+
+document.querySelectorAll('.tab').forEach(function (t) {
+  t.onclick = function () {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function (x) { x.classList.remove('active'); });
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+  };
+});
+
+document.getElementById('pageChecks').innerHTML = MIRAGE_PAGES.filter(function (p) { return !p.open && !p.top; }).map(function (p) {
+  return '<label class="check-item"><input type="checkbox" value="' + p.key + '"> ' +
+         p.ico + ' ' + esc(p.label) + '</label>';
+}).join('');
+document.querySelectorAll('#pageChecks input, #f_can_notify').forEach(function (c) {
+  c.onchange = function () { c.closest('.check-item').classList.toggle('checked', c.checked); };
+});
+
+/* النماذج اليومية التي لها مسار */
+Mirage.fillSelect('flowForm', Object.keys(MirageAPI.FORMS).map(function (k) {
+  return { value: k, text: MirageAPI.FORMS[k] };
+}));
+
+/* ─── تحميل الصفحة كاملة في طلب واحد ─── */
+function loadAll() {
+  return Mirage.api('admin_data', { form: document.getElementById('flowForm').value })
+    .then(function (res) {
+      if (res.status !== 'success') { Mirage.fail(res); return; }
+      USER_FLOWS = res.user_flows || [];
+      paintSettings(res);
+      paintUsers(res.users || []);
+      paintCatalog(res.catalog || []);
+      paintUserFlows();
+      if (document.getElementById('flowUser').value) loadFlow();
+      else { STATIONS = res.flow || []; renderFlow(); }
+    });
+}
+
+function loadSettings() { return loadAll(); }
+
+function stationText(tok) { return Mirage.stationLabel(tok); }
+
+function paintSettings(res) {
+    LISTS.centers  = res.centers  || [];
+    LISTS.roles    = res.roles    || [];
+    LISTS.jobs     = res.jobs     || [];
+    LISTS.subjects = res.subjects || [];
+    LISTS.projects = res.projects || [];
+    LISTS.users    = (res.users || []).filter(function (u) { return u.state === 'نشط'; });
+    LISTS.centerRows = res.center_rows || [];
+
+    paintCenters();
+    document.getElementById('roleList').innerHTML    = chips('roles',    LISTS.roles);
+    paintJobs();
+    loadLevels();
+    document.getElementById('subjectList').innerHTML = chips('subjects', LISTS.subjects);
+
+    document.getElementById('projectRows').innerHTML = LISTS.projects.length
+      ? LISTS.projects.map(function (p) {
+          var n = esc(p.name);
+          return '<tr><td style="font-weight:800">' + n + '</td>' +
+            cell(n, 'workers', p.workers) + cell(n, 'supervisors', p.supervisors) +
+            cell(n, 'managers', p.managers) +
+            '<td style="font-weight:900">' + (p.workers + p.supervisors + p.managers) + '</td>' +
+            '<td><button class="btn btn-danger btn-sm" onclick="delItem(\'projects\',\'' + n + '\')">حذف</button></td></tr>';
+        }).join('')
+      : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:26px">لم تُضف مشاريع بعد</td></tr>';
+
+    Mirage.fillSelect('f_center',    LISTS.centers, 'اختر المركز…');
+    Mirage.fillSelect('f_role',      LISTS.roles,   'اختر الصلاحية…');
+    Mirage.jobField('f_job_title');
+    Mirage.fillSelect('f_project',   LISTS.projects.map(function (p) { return p.name; }), 'بلا مشروع محدد');
+    fillManagers();
+    fillStations();
+    fillFlowUsers();
+
+    Mirage.adder('f_center', 'centers', 'مركز', loadSettings);
+    Mirage.adder('f_role', 'roles', 'صلاحية', loadSettings);
+    Mirage.adder('f_project', 'projects', 'مشروع', loadSettings);
+
+    // الحذف من القوائم — لمدير النظام وحده
+    Mirage.remover('f_center',    'centers',  'المراكز والأقسام',     loadSettings);
+    Mirage.remover('f_role',      'roles',    'الصلاحيات والأدوار',   loadSettings);
+    Mirage.remover('f_project',   'projects', 'المشاريع',             loadSettings);
+    // «يتبع لـ»: إن كانت القيمة صلاحية حُذفت من قائمة الصلاحيات، وإن كانت شخصاً أُفرغ الحقل
+    Mirage.remover('f_manager', null, 'الصلاحيات والأدوار', loadSettings, {
+      resolve: function (v) { return LISTS.roles.indexOf(v) > -1 ? 'roles' : ''; }
+    });
+    // مستوى الصلاحية ثابت في النظام: الزر يُعيد الحقل إلى المستوى الأساسي
+    Mirage.remover('f_access', null, 'مستوى الصلاحية', null, { clearOnly: true, clearTo: '0' });
+
+    fillMergeNew();                    // اقتراحات «القيمة الجديدة» في تبويب توحيد البيانات
+}
+
+/** «يتبع لـ»: الأشخاص أولاً، والصلاحيات القديمة للتوافق فقط */
+function fillManagers() {
+  var el = document.getElementById('f_manager');
+  var cur = el.value;
+  el.innerHTML = '<option value="">بلا مسؤول مباشر</option>' +
+    '<optgroup label="الأشخاص">' + LISTS.users.map(function (u) {
+      return '<option value="' + esc(u.real_name) + '">' + esc(u.real_name) +
+        (u.job_title ? ' — ' + esc(u.job_title) : '') + '</option>';
+    }).join('') + '</optgroup>' +
+    '<optgroup label="صلاحية (النظام القديم — يُفضَّل اختيار شخص)">' + LISTS.roles.map(function (r) {
+      return '<option value="' + esc(r) + '">' + esc(r) + '</option>';
+    }).join('') + '</optgroup>';
+  el.value = cur;
+}
+
+/* ─── الأقسام ورؤساؤها ─── */
+function paintCenters() {
+  var box = document.getElementById('centerList');
+  if (!LISTS.centerRows.length) {
+    box.innerHTML = '<span style="color:var(--text-muted);font-size:13px">لا أقسام بعد</span>';
+    return;
+  }
+  var people = LISTS.users.map(function (u) { return u.real_name; });
+  box.innerHTML =
+    '<div class="center-row" style="font-size:12.5px;color:var(--text-muted);font-weight:800;padding-top:0">' +
+      '<span>القسم</span><span>رئيس القسم</span><span>نوع القسم</span><span></span></div>' +
+    LISTS.centerRows.map(function (c) {
+      var n = esc(c.name);
+      return '<div class="center-row">' +
+        '<b style="color:var(--brand-dark)">' + n + '</b>' +
+        '<select data-center="' + n + '" data-f="head"><option value="">— لم يُحدَّد —</option>' +
+          people.map(function (p) {
+            return '<option value="' + esc(p) + '"' + (p === c.head ? ' selected' : '') + '>' + esc(p) + '</option>';
+          }).join('') + '</select>' +
+        '<select data-center="' + n + '" data-f="kind">' +
+          '<option value=""' + (!c.kind ? ' selected' : '') + '>قسم عادي</option>' +
+          '<option value="hr"' + (c.kind === 'hr' ? ' selected' : '') + '>شؤون الموظفين</option>' +
+          '<option value="top"' + (c.kind === 'top' ? ' selected' : '') + '>الإدارة العليا</option>' +
+        '</select>' +
+        '<button class="btn btn-danger btn-sm" onclick="delItem(\'centers\',\'' + n + '\')">حذف</button>' +
+      '</div>';
+    }).join('');
+
+  box.querySelectorAll('select[data-center]').forEach(function (sel) {
+    sel.onchange = function () {
+      var name = sel.dataset.center;
+      var row = LISTS.centerRows.filter(function (c) { return c.name === name; })[0] || {};
+      var head = box.querySelector('select[data-center="' + CSS.escape(name) + '"][data-f="head"]').value;
+      var kind = box.querySelector('select[data-center="' + CSS.escape(name) + '"][data-f="kind"]').value;
+      Mirage.api('center_set', { name: name, head: head, kind: kind }).then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        row.head = head; row.kind = kind;
+        Mirage.toast('حُفظ: ' + name);
+        fillStations();
+        previewRoute();
+      });
+    };
+  });
+}
+
+function cell(project, key, value) {
+  return '<td><input type="number" min="0" value="' + value + '" style="max-width:110px" ' +
+         'onchange="setRequired(this, \'' + project + '\')" data-key="' + key + '"></td>';
+}
+
+function chips(list, items) {
+  if (!items.length) return '<span style="color:var(--text-muted);font-size:13px">لا عناصر بعد</span>';
+  return items.map(function (v) {
+    return '<span class="chip">' + esc(v) +
+      '<button title="حذف" onclick="delItem(\'' + list + '\',\'' + esc(v) + '\')">✕</button></span>';
+  }).join('');
+}
+
+/* ─────────── الوظائف بمجموعتيها ─────────── */
+
+var JOBS = [];
+
+function paintJobs() {
+  Mirage.api('my_jobs', {}).then(function (res) {
+    JOBS = res.jobs || [];
+    [0, 1].forEach(function (g) {
+      var box = document.getElementById('jobList' + g);
+      var items = JOBS.filter(function (j) { return (g ? j.level >= 1 : j.level === 0); });
+      box.innerHTML = items.length
+        ? items.map(function (j) {
+            return '<span class="chip">' + esc(j.name) +
+              '<button title="حذف" onclick="delJob(\'' + esc(j.name) + '\')">✕</button></span>';
+          }).join('')
+        : '<span style="color:var(--text-muted);font-size:13px">لا وظائف في هذه المجموعة</span>';
+    });
+  });
+}
+
+function addJob() {
+  var el = document.getElementById('newJob');
+  var v = el.value.trim();
+  if (!v) { el.focus(); return; }
+  Mirage.api('job_add', { name: v, level: document.getElementById('newJobLevel').value }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    el.value = '';
+    Mirage.clearListCache();
+    Mirage.toast('أُضيفت الوظيفة');
+    paintJobs();
+  });
+}
+
+function delJob(name) {
+  Mirage.api('value_usage', { list: 'jobs', value: name }).then(function (u) {
+    var n = (u.status === 'success' && u.total) || 0;
+    Mirage.confirm(
+      n ? 'الوظيفة «' + name + '» مستعملة في ' + n + ' سجلاً. حذفها لا يحذف السجلات، لكنها تبقى معلّقة ' +
+          'على اسم غير موجود — الأفضل توحيدها من تبويب «توحيد البيانات».'
+        : 'ستُحذف «' + name + '» من قائمة الوظائف. لا سجلات مرتبطة بها.',
+      'حذف وظيفة'
+    ).then(function (yes) {
+      if (!yes) return;
+      Mirage.api('job_delete', { name: name }).then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.clearListCache(); Mirage.toast('حُذفت الوظيفة'); paintJobs();
+      });
+    });
+  });
+}
+
+/* ─────────── مستويات الصلاحية ─────────── */
+
+var LEVELS = [];
+
+function loadLevels() {
+  Mirage.api('access_levels', {}).then(function (res) {
+    LEVELS = res.levels || [];
+    // قائمة المستوى في نموذج المستخدم تُبنى من الجدول نفسه
+    var keep = document.getElementById('f_access').value;
+    document.getElementById('f_access').innerHTML = LEVELS.map(function (l) {
+      return '<option value="' + l.level + '">' + l.level + ' — ' + esc(l.name) + '</option>';
+    }).join('');
+    if (keep !== '' && LEVELS.filter(function (l) { return String(l.level) === String(keep); }).length) {
+      document.getElementById('f_access').value = keep;
+    }
+
+    document.getElementById('levelRows').innerHTML = LEVELS.map(function (l) {
+      return '<tr><td style="font-weight:900">' + l.level +
+          (l.level >= 3 ? ' <span class="tag tag-red">صلاحيات مدير النظام</span>' : '') + '</td>' +
+        '<td style="font-weight:800">' + esc(l.name) + '</td>' +
+        '<td style="font-size:12.5px;line-height:1.8">' + esc(l.note || '—') + '</td>' +
+        '<td style="font-weight:900">' + l.users + '</td>' +
+        '<td style="white-space:nowrap">' +
+          '<button class="btn btn-ghost btn-sm" onclick="editLevel(' + l.level + ')">تعديل</button> ' +
+          (l.protected
+            ? '<span class="hint" style="margin:0">أساسي</span>'
+            : '<button class="btn btn-danger btn-sm" onclick="delLevel(' + l.level + ')">حذف</button>') +
+        '</td></tr>';
+    }).join('');
+  });
+}
+
+function editLevel(level) {
+  var l = LEVELS.filter(function (x) { return x.level === level; })[0];
+  if (!l) return;
+  document.getElementById('newLevel').value = l.level;
+  document.getElementById('newLevelName').value = l.name;
+  document.getElementById('newLevelNote').value = l.note || '';
+  document.getElementById('newLevelName').focus();
+}
+
+function saveLevel() {
+  var lv = document.getElementById('newLevel').value;
+  var nm = document.getElementById('newLevelName').value.trim();
+  var nt = document.getElementById('newLevelNote').value.trim();
+  if (lv === '' || isNaN(+lv)) return Mirage.note('اكتب رقم المستوى.', 'ناقص');
+  if (!nm) return Mirage.note('اكتب اسم المستوى.', 'ناقص');
+
+  var go = function () {
+    Mirage.api('access_level_save', { level: lv, name: nm, note: nt }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      document.getElementById('newLevel').value = '';
+      document.getElementById('newLevelName').value = '';
+      document.getElementById('newLevelNote').value = '';
+      Mirage.toast('حُفظ المستوى');
+      loadLevels();
+    });
+  };
+
+  if (+lv >= 3) {
+    Mirage.confirm('المستوى ' + lv + ' يمنح صاحبه صلاحيات مدير النظام كاملة: إدارة النظام والحذف وتوحيد البيانات. ' +
+                   'هل تريد إنشاءه؟', 'مستوى بصلاحيات كاملة').then(function (yes) { if (yes) go(); });
+  } else { go(); }
+}
+
+function delLevel(level) {
+  var l = LEVELS.filter(function (x) { return x.level === level; })[0];
+  if (!l) return;
+
+  if (!l.users) {
+    return Mirage.confirm('سيُحذف المستوى ' + level + ' — لا مستخدم عليه.', 'حذف مستوى').then(function (yes) {
+      if (!yes) return;
+      Mirage.api('access_level_delete', { level: level, move_to: '' }).then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.toast('حُذف المستوى'); loadLevels();
+      });
+    });
+  }
+
+  var others = LEVELS.filter(function (x) { return x.level !== level; });
+  Swal.fire({
+    icon: 'warning',
+    title: 'على المستوى ' + level + ' عدد ' + l.users + ' مستخدماً',
+    html: '<div style="text-align:right;direction:rtl">' +
+      '<div style="font-size:13.5px;line-height:1.9;margin-bottom:12px">' +
+      'لا يُحذف مستوى فيه مستخدمون. اختر المستوى الذي يُنقلون إليه، فيُنقلون ثم يُحذف المستوى — ' +
+      'بلا فقدان أي بيانات ولا حساب بلا مستوى.</div>' +
+      '<label class="swal-lbl" for="mvLevel">يُنقلون إلى</label>' +
+      '<select id="mvLevel" class="swal2-select" style="width:100%;margin:6px 0 0">' +
+        others.map(function (x) {
+          return '<option value="' + x.level + '">' + x.level + ' — ' + esc(x.name) + '</option>';
+        }).join('') +
+      '</select></div>',
+    showCancelButton: true, confirmButtonText: 'انقلهم ثم احذف', cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#DC2626', cancelButtonColor: '#64748B', focusConfirm: false,
+    preConfirm: function () { return document.getElementById('mvLevel').value; }
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    Mirage.api('access_level_delete', { level: level, move_to: r.value }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('نُقل ' + res.moved + ' مستخدماً إلى المستوى ' + r.value + '، وحُذف المستوى ' + level + '.', 'تمّ');
+      loadLevels();
+      loadUsers();
+    });
+  });
+}
+
+function addItem(list, inputId) {
+  var el = document.getElementById(inputId);
+  var v = el.value.trim();
+  if (!v) { el.focus(); return; }
+  Mirage.api('settings_add', { list: list, value: v }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    el.value = '';
+    Mirage.clearListCache();
+    Mirage.toast('تمت الإضافة');
+    loadSettings();
+  });
+}
+
+function addProject() {
+  var name = document.getElementById('newProject').value.trim();
+  if (!name) return document.getElementById('newProject').focus();
+  Mirage.api('settings_add', {
+    list: 'projects', value: name,
+    workers: document.getElementById('newW').value || 0,
+    supervisors: document.getElementById('newS').value || 0,
+    managers: document.getElementById('newM').value || 0
+  }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    document.getElementById('newProject').value = '';
+    document.getElementById('newW').value = 0;
+    document.getElementById('newS').value = 0;
+    document.getElementById('newM').value = 0;
+    Mirage.clearListCache();
+    Mirage.toast('أُضيف المشروع');
+    loadSettings();
+  });
+}
+
+function setRequired(el, project) {
+  var inputs = el.closest('tr').querySelectorAll('input[data-key]');
+  var vals = {};
+  inputs.forEach(function (i) { vals[i.dataset.key] = Math.max(0, parseInt(i.value, 10) || 0); });
+
+  Mirage.api('settings_set_required', {
+    project: project,
+    workers: vals.workers, supervisors: vals.supervisors, managers: vals.managers
+  }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.clearListCache();
+    Mirage.toast('حُدِّثت الأعداد');
+    loadSettings();
+  });
+}
+
+/** الحذف من القوائم: يُفحص الارتباط أولاً، فلا تبقى سجلات معلّقة على اسم محذوف */
+function delItem(list, value) {
+  Mirage.api('value_usage', { list: list, value: value }).then(function (u) {
+    var n = (u.status === 'success' && u.total) || 0;
+    var msg = n
+      ? 'هذه القيمة مرتبطة بـ ' + n + ' سجلاً. حذفها من القائمة لا يحذف السجلات، لكنها تبقى معلّقة ' +
+        'على الاسم القديم وقد تختفي من الشاشات. الأفضل توحيدها على اسم آخر من تبويب «توحيد البيانات».'
+      : 'سيُحذف «' + value + '» من القوائم. لا سجلات مرتبطة به.';
+    Swal.fire({
+      icon: n ? 'warning' : 'question',
+      title: n ? 'القيمة مستعملة في البيانات' : 'حذف «' + value + '»',
+      text: msg,
+      showCancelButton: true, showDenyButton: !!n,
+      confirmButtonText: 'حذف على أي حال', denyButtonText: 'توحيدها بدل الحذف', cancelButtonText: 'إلغاء',
+      confirmButtonColor: '#DC2626', denyButtonColor: '#2563EB', cancelButtonColor: '#64748B', width: 620
+    }).then(function (r) {
+      if (r.isDenied) return goMerge(list, value);
+      if (!r.isConfirmed) return;
+      Mirage.api('settings_delete', { list: list, value: value }).then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.clearListCache(); Mirage.toast('تم الحذف'); loadSettings();
+      });
+    });
+  });
+}
+
+/* ─────────── توحيد البيانات ─────────── */
+
+var MERGE_SRC = {
+  roles: 'roles', jobs: 'jobs', centers: 'centers',
+  projects: 'projects', subjects: 'subjects', people: 'people', employees: 'employees'
+};
+
+/** ينقلك إلى تبويب التوحيد بالقيمة جاهزة */
+function goMerge(list, value) {
+  document.querySelector('.tab[data-tab="merge"]').click();
+  if (MERGE_SRC[list]) document.getElementById('mgList').value = list;
+  fillMergeNew();
+  document.getElementById('mgOld').value = value || '';
+  document.getElementById('mgNew').focus();
+}
+
+/** قائمة الاقتراحات للقيمة الجديدة بحسب نوع القيمة */
+function fillMergeNew() {
+  var list = document.getElementById('mgList').value;
+  var vals = list === 'roles'    ? LISTS.roles
+           : list === 'jobs'     ? LISTS.jobs
+           : list === 'centers'  ? LISTS.centers
+           : list === 'projects' ? LISTS.projects.map(function (p) { return p.name; })
+           : list === 'subjects' ? LISTS.subjects
+           : list === 'people'   ? LISTS.users.map(function (u) { return u.real_name; })
+           : [];
+  document.getElementById('mgNewList').innerHTML = vals.map(function (v) {
+    return '<option value="' + esc(v) + '">';
+  }).join('');
+}
+
+function scanOrphans() {
+  var box = document.getElementById('orphanBox');
+  box.innerHTML = '<span class="hint">جارٍ الفحص…</span>';
+  Mirage.api('orphan_values', {}).then(function (res) {
+    if (res.status !== 'success') { box.innerHTML = '<span class="hint">' + esc(res.message) + '</span>'; return Mirage.fail(res); }
+    var rows = res.rows || [];
+    document.getElementById('mgOldList').innerHTML = rows.map(function (x) {
+      return '<option value="' + esc(x.value) + '">';
+    }).join('');
+    if (!rows.length) {
+      box.innerHTML = '<div class="alert alert-success" style="margin:0">لا قيم معلّقة — كل ما في البيانات موجود في القوائم.</div>';
+      return;
+    }
+    var NAME = { roles: 'الصلاحية والدور', jobs: 'المسمى الوظيفي', centers: 'المركز أو القسم',
+                 projects: 'المشروع', subjects: 'موضوع المراسلة' };
+    box.innerHTML = '<div class="table-wrap"><table><thead><tr>' +
+      '<th>نوع القيمة</th><th>القيمة المفقودة</th><th>عدد السجلات</th><th></th></tr></thead><tbody>' +
+      rows.map(function (x) {
+        return '<tr><td>' + esc(NAME[x.list] || x.list) + '</td>' +
+          '<td style="font-weight:800">' + esc(x.value) + '</td>' +
+          '<td style="font-weight:900;color:var(--danger)">' + x.rows + '</td>' +
+          '<td><button class="btn btn-primary btn-sm" type="button" onclick="goMerge(\'' +
+            esc(x.list) + '\',\'' + esc(x.value) + '\')">توحيدها</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  });
+}
+
+var TBL_NAME = {
+  app_users: 'المستخدمون', employees: 'الموظفون', violations: 'المخالفات', documents: 'المراسلات',
+  followups: 'المهام والمتابعات', readiness: 'تقارير الجهوزية', new_hires: 'الموظفون الجدد',
+  resignations: 'ترك العمل', suggestions: 'الاقتراحات', notifications: 'الإشعارات',
+  notices: 'التعاميم', workflows: 'مسارات العمل', user_workflows: 'المسارات الخاصة',
+  centers: 'الأقسام', roles: 'قائمة الصلاحيات', job_titles: 'قائمة المسميات',
+  projects: 'المشاريع', doc_subjects: 'موضوعات المراسلات'
+};
+
+function mergeArgs() {
+  var v = {
+    list: document.getElementById('mgList').value,
+    old:  document.getElementById('mgOld').value.trim(),
+    new:  document.getElementById('mgNew').value.trim()
+  };
+  if (!v.old || !v.new) { Mirage.note('اكتب القيمة القديمة والقيمة الجديدة.', 'ناقص'); return null; }
+  if (v.old === v.new)  { Mirage.note('القيمتان متطابقتان.', 'لا تغيير'); return null; }
+  return v;
+}
+
+function mergeResult(res, applied) {
+  var box = document.getElementById('mergeBox');
+  if (!res.total) {
+    box.innerHTML = '<div class="alert alert-warn" style="margin:0">لا سجل واحد يحمل هذه القيمة القديمة — ' +
+      'تأكّد من كتابتها كما سُجّلت تماماً.</div>';
+    return;
+  }
+  box.innerHTML = '<div class="alert ' + (applied ? 'alert-success' : 'alert-info') + '">' +
+      (applied ? '<b>تمّ التوحيد:</b> ' : '<b>المعاينة:</b> سيتغيّر ') + res.total + ' سجلاً.' +
+      (applied ? ' أُعيد ربط السجلات بالاسم الجديد.' : ' اضغط «تنفيذ التوحيد» لإتمام العملية.') + '</div>' +
+    '<div class="table-wrap"><table><thead><tr><th>الجدول</th><th>الحقل</th><th>عدد السجلات</th></tr></thead><tbody>' +
+    res.details.map(function (d) {
+      return '<tr><td>' + esc(TBL_NAME[d.tbl] || d.tbl) + '</td><td>' + esc(d.col) + '</td>' +
+        '<td style="font-weight:900">' + d.rows + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function mergePreview() {
+  var v = mergeArgs(); if (!v) return;
+  var btn = document.getElementById('mgCheck');
+  Mirage.busy(btn, true);
+  Mirage.api('rename_value', { list: v.list, old: v.old, new: v.new, apply: false }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    mergeResult(res, false);
+  });
+}
+
+function mergeApply() {
+  var v = mergeArgs(); if (!v) return;
+  Mirage.confirm('سيُستبدل «' + v.old + '» بـ «' + v.new + '» في كل السجلات المرتبطة. ' +
+                 'العملية لا تُحذف بيانات، لكنها لا تُلغى تلقائياً.', 'تأكيد التوحيد').then(function (yes) {
+    if (!yes) return;
+    var btn = document.getElementById('mgApply');
+    Mirage.busy(btn, true);
+    Mirage.api('rename_value', { list: v.list, old: v.old, new: v.new, apply: true }).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      mergeResult(res, true);
+      Mirage.clearListCache();
+      Mirage.ok('أُعيد ربط ' + res.total + ' سجلاً بالاسم «' + v.new + '».', 'تمّ التوحيد');
+      loadSettings();
+      scanOrphans();
+    });
+  });
+}
+
+/* ─── المستخدمون ─── */
+function loadUsers() { return loadAll(); }
+
+function paintUsers(users) {
+    var names = users.map(function (u) { return u.real_name; });
+    var holders = {};
+    users.forEach(function (u) { if (u.state === 'نشط' && u.role) holders[u.role] = (holders[u.role] || 0) + 1; });
+
+    // «يتبع لـ» صلاحية يحملها أكثر من شخص: النظام لا يعرف من المقصود بالضبط
+    var vague = users.filter(function (u) {
+      return u.manager && names.indexOf(u.manager) === -1 && (holders[u.manager] || 0) !== 1;
+    });
+    document.getElementById('managerWarn').innerHTML = vague.length
+      ? '<div class="alert alert-warn"><b>' + vague.length + ' مستخدم يتبع لصلاحية لا لشخص:</b> ' +
+        vague.map(function (u) {
+          return '<span class="cell-link" onclick=\'editUser(' + JSON.stringify(u).replace(/'/g, "&#39;") + ')\'>' +
+            esc(u.real_name) + '</span> (يتبع لـ ' + esc(u.manager) + ')';
+        }).join('، ') +
+        '<br>الصلاحية يحملها أكثر من شخص، فيختار النظام أقربهم بحسب المشروع. اضغط على الاسم واختر المسؤول بالاسم لتحديده بدقة.</div>'
+      : '';
+
+    document.getElementById('userCount').textContent = users.length + ' مستخدم';
+    document.getElementById('userRows').innerHTML = users.length
+      ? users.map(function (x) {
+          return '<tr>' +
+            '<td><span class="cell-link" onclick=\'editUser(' + JSON.stringify(x).replace(/'/g, "&#39;") + ')\'>' + esc(x.username) + '</span></td>' +
+            '<td>' + esc(x.real_name) + '</td><td>' + esc(x.center) + '</td>' +
+            '<td><span class="tag tag-blue">' + esc(x.role) + '</span></td>' +
+            '<td>' + esc(x.manager || '—') + '</td><td>' + esc(x.project || '—') + '</td>' +
+            '<td>' + x.access_level + '</td>' +
+            '<td><span class="tag tag-gray">' + x.pages.length + ' صفحة</span></td>' +
+            '<td>' + (x.can_notify ? '<span class="tag tag-green">مسموح</span>' : '<span class="tag tag-gray">—</span>') + '</td>' +
+            '<td>' + Mirage.tag(x.state) + '</td>' +
+            '<td style="white-space:nowrap">' +
+              '<button class="btn btn-ghost btn-sm" onclick="setPwd(\'' + esc(x.username) + '\',\'' +
+                esc(x.real_name).replace(/'/g, "") + '\')">🔑 كلمة المرور</button> ' +
+              '<button class="btn btn-danger btn-sm" onclick="delUser(\'' + esc(x.username) + '\')">حذف</button>' +
+            '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:26px">لا مستخدمين بعد</td></tr>';
+}
+
+function editUser(x) {
+  document.querySelector('.tab[data-tab="users"]').click();
+  EDITING = x.username;
+  document.getElementById('f_username').value = x.username;
+  document.getElementById('f_username').readOnly = true;
+  document.getElementById('f_password').value = '';
+  document.getElementById('pwHint').textContent = 'اتركها فارغة للإبقاء على كلمة المرور الحالية';
+  document.getElementById('f_real_name').value = x.real_name;
+  document.getElementById('f_job_title').value = x.job_title;
+  document.getElementById('f_center').value  = x.center;
+  document.getElementById('f_role').value    = x.role;
+  var mgr = document.getElementById('f_manager');
+  mgr.value = x.manager;
+  if (x.manager && mgr.value !== x.manager) {      // قيمة قديمة لم تعد في القائمة
+    mgr.insertAdjacentHTML('beforeend', '<option value="' + esc(x.manager) + '">' + esc(x.manager) + '</option>');
+    mgr.value = x.manager;
+  }
+  document.getElementById('f_project').value = x.project;
+  document.getElementById('f_access').value  = x.access_level;
+  document.getElementById('f_state').value   = x.state;
+  var cn = document.getElementById('f_can_notify');
+  cn.checked = !!x.can_notify;
+  cn.closest('.check-item').classList.toggle('checked', cn.checked);
+
+  document.querySelectorAll('#pageChecks input').forEach(function (c) {
+    c.checked = x.pages.indexOf(c.value) > -1;
+    c.closest('.check-item').classList.toggle('checked', c.checked);
+  });
+
+  document.getElementById('userFormTitle').textContent = 'تعديل بيانات: ' + x.real_name;
+  var btn = document.getElementById('saveUserBtn');
+  btn.classList.remove('btn-primary'); btn.classList.add('btn-warn');
+  btn.querySelector('.btn-text').textContent = 'تحديث البيانات';
+  document.getElementById('resetUserBtn').style.display = 'inline-flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetUserForm() {
+  EDITING = null;
+  document.getElementById('userForm').reset();
+  document.getElementById('f_username').readOnly = false;
+  document.getElementById('pwHint').textContent = 'مطلوبة للمستخدم الجديد';
+  document.querySelectorAll('#pageChecks input, #f_can_notify').forEach(function (c) {
+    c.checked = false; c.closest('.check-item').classList.remove('checked');
+  });
+  document.getElementById('userFormTitle').textContent = 'إضافة مستخدم جديد';
+  var btn = document.getElementById('saveUserBtn');
+  btn.classList.remove('btn-warn'); btn.classList.add('btn-primary');
+  btn.querySelector('.btn-text').textContent = 'حفظ المستخدم';
+  document.getElementById('resetUserBtn').style.display = 'none';
+}
+
+document.getElementById('userForm').onsubmit = function (e) {
+  e.preventDefault();
+  var pages = [];
+  document.querySelectorAll('#pageChecks input:checked').forEach(function (c) { pages.push(c.value); });
+
+  var pw = document.getElementById('f_password').value;
+  if (!EDITING && !pw) return Mirage.note('كلمة المرور مطلوبة للمستخدم الجديد');
+  if (!EDITING && !/^[a-z0-9._-]{2,30}$/i.test(document.getElementById('f_username').value.trim())) {
+    return Mirage.note('اسم المستخدم بحروف إنجليزية وأرقام فقط، بلا مسافات');
+  }
+  if (document.getElementById('f_manager').value &&
+      document.getElementById('f_manager').value === document.getElementById('f_real_name').value.trim()) {
+    return Mirage.note('لا يمكن أن يكون المستخدم مسؤولاً مباشراً عن نفسه');
+  }
+
+  var btn = document.getElementById('saveUserBtn');
+  Mirage.busy(btn, true);
+
+  Mirage.api('user_save', {
+    username: document.getElementById('f_username').value.trim(),
+    password: pw,
+    real_name: document.getElementById('f_real_name').value.trim(),
+    job_title: document.getElementById('f_job_title').value,
+    center: document.getElementById('f_center').value,
+    role: document.getElementById('f_role').value,
+    manager: document.getElementById('f_manager').value,
+    project: document.getElementById('f_project').value,
+    access_level: document.getElementById('f_access').value,
+    pages: pages.join(','),
+    state: document.getElementById('f_state').value,
+    can_notify: document.getElementById('f_can_notify').checked ? '1' : '0'
+  }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.toast(res.mode === 'update' ? 'حُدِّثت البيانات' : 'أُضيف المستخدم');
+    resetUserForm();
+    loadUsers();
+  });
+};
+
+function delUser(username) {
+  Mirage.confirm('سيُحذف المستخدم «' + username + '» ولن يستطيع الدخول.').then(function (yes) {
+    if (!yes) return;
+    Mirage.api('user_delete', { username: username }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.toast('حُذف المستخدم'); loadUsers();
+    });
+  });
+}
+
+/* ─── لائحة المخالفات: ست درجات ─── */
+var TIERS = ['tier1', 'tier2', 'tier3', 'tier4', 'tier5', 'tier6'];
+
+function paintCatalog(list) {
+  document.getElementById('catCount').textContent = list.length + ' مخالفة';
+  document.getElementById('catRows').innerHTML = list.length
+    ? list.map(function (c) {
+        return '<tr>' +
+          '<td><span class="cell-link" onclick=\'editCat(' + JSON.stringify(c).replace(/'/g, "&#39;") + ')\'>' +
+            esc(c.code) + '</span></td>' +
+          '<td style="font-weight:700">' + esc(c.vtype) + '</td>' +
+          TIERS.map(function (t) { return '<td>' + esc(c[t] || '—') + '</td>'; }).join('') +
+          '<td><button class="btn btn-danger btn-sm" onclick="delCat(\'' + esc(c.code) + '\')">حذف</button></td>' +
+          '</tr>';
+      }).join('')
+    : '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:26px">' +
+      'اللائحة فارغة — أضف مخالفاتك من النموذج أعلاه</td></tr>';
+}
+
+function editCat(c) {
+  document.getElementById('c_code').value = c.code;
+  document.getElementById('c_code').readOnly = true;
+  document.getElementById('c_type').value = c.vtype;
+  TIERS.forEach(function (t, i) { document.getElementById('c_t' + (i + 1)).value = c[t] || ''; });
+  document.getElementById('catTitle').textContent = 'تعديل المخالفة رقم ' + c.code;
+  var b = document.getElementById('catSave');
+  b.classList.remove('btn-primary'); b.classList.add('btn-warn');
+  b.querySelector('.btn-text').textContent = 'تحديث المخالفة';
+  document.getElementById('catCancel').style.display = 'inline-flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetCat() {
+  document.getElementById('catForm').reset();
+  document.getElementById('c_code').readOnly = false;
+  document.getElementById('catTitle').textContent = 'إضافة مخالفة إلى اللائحة';
+  var b = document.getElementById('catSave');
+  b.classList.remove('btn-warn'); b.classList.add('btn-primary');
+  b.querySelector('.btn-text').textContent = 'حفظ المخالفة';
+  document.getElementById('catCancel').style.display = 'none';
+}
+
+document.getElementById('catForm').onsubmit = function (e) {
+  e.preventDefault();
+  if (!document.getElementById('c_t1').value.trim()) return Mirage.note('الدرجة الأولى من الجزاء مطلوبة');
+  var b = document.getElementById('catSave');
+  Mirage.busy(b, true);
+  var data = { code: document.getElementById('c_code').value.trim(), vtype: document.getElementById('c_type').value.trim() };
+  TIERS.forEach(function (t, i) { data[t] = document.getElementById('c_t' + (i + 1)).value.trim(); });
+  Mirage.api('catalog_save', data).then(function (res) {
+    Mirage.busy(b, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.toast(res.mode === 'update' ? 'حُدِّثت المخالفة' : 'أُضيفت المخالفة');
+    resetCat();
+    Mirage.clearListCache();
+    loadAll();
+  });
+};
+
+function delCat(code) {
+  Mirage.confirm('سيُحذف رقم ' + code + ' من اللائحة. البلاغات المسجّلة عليه تبقى كما هي.').then(function (yes) {
+    if (!yes) return;
+    Mirage.api('catalog_delete', { code: code }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.clearListCache();
+      Mirage.toast('حُذفت المخالفة');
+      loadAll();
+    });
+  });
+}
+
+/* ─── المسارات: العام، والخاص بكل مستخدم ─── */
+function fillStations() {
+  var el = document.getElementById('flowStation');
+  var heads = LISTS.centerRows.filter(function (c) { return c.head; });
+  el.innerHTML = '<option value="">اختر محطة…</option>' +
+    '<optgroup label="بحسب مُقدِّم النموذج">' +
+      Object.keys(TOKENS).map(function (k) {
+        return '<option value="' + k + '">' + esc(TOKENS[k]) + '</option>';
+      }).join('') + '</optgroup>' +
+    '<optgroup label="رئيس قسم محدد">' +
+      LISTS.centerRows.map(function (c) {
+        return '<option value="@center:' + esc(c.name) + '">رئيس ' + esc(c.name) +
+          (c.head ? ' (' + esc(c.head) + ')' : ' — لم يُحدَّد رئيسه') + '</option>';
+      }).join('') + '</optgroup>' +
+    '<optgroup label="شخص بعينه">' +
+      LISTS.users.map(function (u) {
+        return '<option value="user:' + esc(u.real_name) + '">' + esc(u.real_name) +
+          (u.job_title ? ' — ' + esc(u.job_title) : '') + '</option>';
+      }).join('') + '</optgroup>';
+  if (!heads.length) el.title = 'حدّد رؤساء الأقسام من تبويب إعدادات القوائم';
+}
+
+function fillFlowUsers() {
+  var el = document.getElementById('flowUser'), cur = el.value;
+  el.innerHTML = '<option value="">المسار العام — لكل المستخدمين</option>' +
+    '<optgroup label="مسار خاص بمستخدم">' + LISTS.users.map(function (u) {
+      var has = USER_FLOWS.some(function (f) { return f.username === u.username && f.form === document.getElementById('flowForm').value; });
+      return '<option value="' + esc(u.username) + '">' + esc(u.real_name) + (has ? ' ★ له مسار خاص' : '') + '</option>';
+    }).join('') + '</optgroup>';
+  el.value = cur;
+
+  var pv = document.getElementById('previewUser'), pcur = pv.value;
+  pv.innerHTML = '<option value="">اختر مستخدماً…</option>' + LISTS.users.map(function (u) {
+    return '<option value="' + esc(u.username) + '">' + esc(u.real_name) + '</option>';
+  }).join('');
+  pv.value = pcur;
+}
+
+function loadFlow() {
+  var form = document.getElementById('flowForm').value;
+  var user = document.getElementById('flowUser').value;
+  var hint = document.getElementById('flowUserHint');
+  document.getElementById('dropUserFlow').style.display = 'none';
+
+  if (user) {
+    var f = USER_FLOWS.filter(function (x) { return x.username === user && x.form === form; })[0];
+    if (f) {
+      STATIONS = (f.stations || []).slice();
+      hint.textContent = 'لهذا المستخدم مسار خاص يحلّ محلّ المسار العام.';
+      document.getElementById('dropUserFlow').style.display = 'inline-flex';
+      renderFlow();
+      return;
+    }
+    hint.textContent = 'لا مسار خاص له بعد — المعروض هو المسار العام. عدّله واحفظه ليصبح خاصاً به.';
+  } else {
+    hint.textContent = 'يُطبَّق على كل من ليس له مسار خاص.';
+  }
+  Mirage.api('flows_get', { form: form }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    STATIONS = (res.stations || []).map(function (x) { return x.station; });
+    renderFlow();
+  });
+}
+
+function renderFlow() {
+  var line = document.getElementById('flowLine');
+  if (!STATIONS.length) {
+    line.innerHTML = '<span style="color:var(--text-muted);font-size:13px">لا محطات — النموذج لن يُحال لأحد.</span>';
+    return;
+  }
+  line.innerHTML = STATIONS.map(function (x, i) {
+    return (i ? '<span class="flow-arrow">←</span>' : '') +
+      '<span class="flow-step">' + (i + 1) + '. ' + esc(stationText(x)) +
+      (i > 0 ? '<button title="تقديم" onclick="moveStation(' + i + ',-1)">↑</button>' : '') +
+      '<button title="إزالة" onclick="rmStation(' + i + ')">✕</button></span>';
+  }).join('');
+  previewRoute();
+}
+
+function addStation() {
+  var v = document.getElementById('flowStation').value;
+  if (!v) return;
+  if (STATIONS.indexOf(v) > -1) return Mirage.note('هذه المحطة موجودة في المسار');
+  STATIONS.push(v);
+  renderFlow();
+}
+
+function rmStation(i) { STATIONS.splice(i, 1); renderFlow(); }
+function moveStation(i, d) {
+  var j = i + d; if (j < 0 || j >= STATIONS.length) return;
+  var t = STATIONS[i]; STATIONS[i] = STATIONS[j]; STATIONS[j] = t; renderFlow();
+}
+
+function saveFlow() {
+  var btn = document.getElementById('saveFlowBtn');
+  var form = document.getElementById('flowForm').value;
+  var user = document.getElementById('flowUser').value;
+  Mirage.busy(btn, true);
+  var call = user
+    ? Mirage.api('user_flow_save', { username: user, form: form, stations: STATIONS })
+    : Mirage.api('flow_save', { form: form, stations: STATIONS });
+  call.then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.ok((user ? 'حُفظ المسار الخاص' : 'حُفظ المسار العام') + ' بـ ' + res.count + ' محطة');
+    loadAll();
+  });
+}
+
+function dropUserFlow() {
+  var user = document.getElementById('flowUser').value;
+  if (!user) return;
+  Mirage.confirm('سيُحذف المسار الخاص ويعود هذا المستخدم إلى المسار العام.').then(function (yes) {
+    if (!yes) return;
+    Mirage.api('user_flow_save', { username: user, form: document.getElementById('flowForm').value, stations: [] })
+      .then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.toast('عاد إلى المسار العام'); loadAll();
+      });
+  });
+}
+
+function paintUserFlows() {
+  var rows = USER_FLOWS.map(function (f) {
+    var u = LISTS.users.filter(function (x) { return x.username === f.username; })[0];
+    return '<tr><td style="font-weight:800">' + esc(u ? u.real_name : f.username) + '</td>' +
+      '<td>' + esc(MirageAPI.FORMS[f.form] || f.form) + '</td>' +
+      '<td>' + (f.stations || []).map(function (x) { return esc(stationText(x)); }).join(' ← ') + '</td>' +
+      '<td><button class="btn btn-ghost btn-sm" onclick="openUserFlow(\'' + esc(f.username) + '\',\'' + esc(f.form) + '\')">تعديل</button></td></tr>';
+  });
+  document.getElementById('userFlowRows').innerHTML = rows.length ? rows.join('')
+    : '<tr><td colspan="4" class="td-empty">لا مسارات خاصة — الجميع على المسار العام.</td></tr>';
+}
+
+function openUserFlow(username, form) {
+  document.getElementById('flowForm').value = form;
+  fillFlowUsers();
+  document.getElementById('flowUser').value = username;
+  loadFlow();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/** المسار المحفوظ محسوباً بأسماء الأشخاص لمستخدم معيّن */
+function previewRoute() {
+  var user = document.getElementById('previewUser').value || document.getElementById('flowUser').value;
+  var box = document.getElementById('previewBox');
+  if (!user) { box.innerHTML = '<span class="hint">اختر مستخدماً لمعاينة مساره في النموذج المحدّد أعلاه.</span>'; return; }
+  Mirage.api('route_preview', { form: document.getElementById('flowForm').value, username: user }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    var u = LISTS.users.filter(function (x) { return x.username === user; })[0];
+    box.innerHTML = '<div class="hint" style="margin-bottom:12px">مسار <b>' + esc(u ? u.real_name : user) +
+      '</b> المحفوظ في «' + esc(MirageAPI.FORMS[document.getElementById('flowForm').value]) + '»:</div>' +
+      Mirage.routeHtml(res.route, -1, false) +
+      '<div class="hint" style="margin-top:12px">المحطة التي لا شاغل لها، أو يشغلها مُقدِّم النموذج نفسه، أو تكرّر شخصاً سابقاً، تُتخطّى تلقائياً. ' +
+      'التعديلات غير المحفوظة لا تظهر هنا.</div>';
+  });
+}
+
+document.getElementById('flowForm').onchange = function () { fillFlowUsers(); loadFlow(); };
+document.getElementById('flowUser').onchange = loadFlow;
+document.getElementById('previewUser').onchange = previewRoute;
+
+/* ─── الإشعارات الموجّهة وسجلّها ─── */
+NOTICE_LOG = Mirage.noticeLog('noticeLog');
+Mirage.notifyComposer('composer', { onSent: function () { NOTICE_LOG.reload(); } });
+
+/* ─── فحص الاتصال ─── */
+function checkServer() {
+  var btn = document.getElementById('pingBtn');
+  var box = document.getElementById('pingResult');
+  if (!box) return;
+
+  box.innerHTML = '<div class="alert alert-info" style="margin:0">جارٍ الفحص…</div>';
+  Mirage.busy(btn, true);
+
+  if (typeof MirageAPI === 'undefined') {
+    Mirage.busy(btn, false);
+    box.innerHTML = '<div class="alert alert-danger" style="margin:0">' +
+      'ملف mirage-api.js غير محمّل. تأكّد أنه موجود في المجلد وأن الصفحة تستدعيه.</div>';
+    return;
+  }
+
+  Mirage.api('ping', {}).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status === 'success') {
+      var tone = res.ms < 600 ? 'alert-info' : 'alert-warn';
+      box.innerHTML = '<div class="alert ' + tone + '" style="margin:0">' +
+        'قاعدة البيانات تستجيب — <b>' + esc(res.backend || '—') + '</b><br>' +
+        'أسرع قياس: <b>' + res.ms + ' ملّي ثانية</b> — التقييم: <b>' + esc(res.verdict || '') + '</b><br>' +
+        (res.samples ? 'القياسات الثلاثة: ' + res.samples.join(' · ') + ' ملّي ثانية<br>' : '') +
+        (res.cold ? '<span style="color:var(--text-muted)">القياس الأول أبطأ بكثير، وهذا طبيعي: ' +
+          'يحمل فتح الاتصال وإيقاظ المشروع من الخمول.</span><br>' : '') +
+        '<span style="font-weight:500">' + esc(res.hint || '') + '</span><br>' +
+        '<span style="font-size:12px;color:var(--text-muted)">وقت الفحص: ' + esc(res.time || '') + '</span>' +
+        '</div>';
+    } else {
+      box.innerHTML = '<div class="alert alert-danger" style="margin:0">' + esc(res.message) +
+        (res.detail ? '<br><span style="font-weight:500">' + esc(res.detail) + '</span>' : '') +
+        (res.raw ? '<pre style="direction:ltr;text-align:left;white-space:pre-wrap;font-size:11px;' +
+          'background:#fff;padding:10px;border-radius:8px;margin-top:10px;max-height:160px;overflow:auto">' +
+          esc(res.raw) + '</pre>' : '') + '</div>';
+    }
+  }).catch(function (e) {
+    Mirage.busy(btn, false);
+    box.innerHTML = '<div class="alert alert-danger" style="margin:0">' +
+      'توقّف الفحص بخطأ: ' + esc((e && e.message) || e) + '</div>';
+  });
+}
+
+// الربط بالجافاسكربت لا بـ onclick، حتى يظهر الخطأ إن فشل التحميل
+(function () {
+  var b = document.getElementById('pingBtn');
+  if (b) b.addEventListener('click', checkServer);
+})();
+
+/* ─────────── إشعارات الهاتف: تجهيز لمرة واحدة ─────────── */
+function pushAdmin() {
+  var box = document.getElementById('pushAdminBody');
+  if (!box) return;
+  Promise.all([Mirage.api('push_status', {}), Mirage.api('push_ping', {})]).then(function (r) {
+    var st = r[0], ping = r[1];
+    var dbOk = st.status === 'success';
+    var fnOk = ping.status === 'success';
+    var keysOk = dbOk && st.has_keys;
+    var urlOk = dbOk && st.function_url === (MIRAGE_URL + '/functions/v1/send-push');
+    var row = function (ok, title, text) {
+      return '<div class="check-row" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border-light)">' +
+        '<span style="font-size:18px">' + (ok ? '✅' : '⬜') + '</span>' +
+        '<div style="flex:1"><b>' + title + '</b><div class="hint" style="margin:2px 0 0">' + text + '</div></div></div>';
+    };
+    box.innerHTML =
+      row(dbOk, '1. قاعدة البيانات', dbOk ? 'نُفّذ الملف ' + Mirage.ltr('12_push.sql') + '.' : esc(st.message || '') + ' — نفّذ ' + Mirage.ltr('12_push.sql') + ' في SQL Editor.') +
+      row(fnOk, '2. الدالة send-push في Supabase', fnOk ? 'منشورة وتستقبل الطلبات.' : esc(ping.message || '') + ' ' + esc(ping.detail || '')) +
+      row(keysOk && urlOk, '3. مفاتيح التوقيع ورابط الدالة', keysOk && urlOk
+          ? 'جاهزة ومحفوظة في قاعدة البيانات.'
+          : 'تُولَّد في متصفحك وتُحفظ في قاعدة البيانات بضغطة واحدة.') +
+      (dbOk ? '<div class="hint" style="margin:12px 0">الأجهزة المفعّلة الآن: <b>' + (st.devices || 0) + '</b> لـ <b>' + (st.users || 0) + '</b> مستخدم.</div>' : '') +
+      '<div class="btn-row" style="margin-top:12px">' +
+        (dbOk && !(keysOk && urlOk) ? '<button class="btn btn-primary btn-sm" id="pushSetupBtn"><span class="btn-text">تجهيز الإشعارات</span><span class="spinner"></span></button>' : '') +
+        '<button class="btn btn-ghost btn-sm" onclick="pushAdmin()">إعادة الفحص</button>' +
+        (keysOk ? '<button class="btn btn-danger btn-sm" id="pushResetBtn">توليد مفاتيح جديدة</button>' : '') +
+      '</div>' +
+      (keysOk && urlOk ? '<div style="margin-top:18px"><b>هذا الجهاز</b><div id="pushAdminDevice" style="margin-top:10px"></div></div>' : '');
+
+    if (keysOk && urlOk) Mirage.push.card('pushAdminDevice');
+    var setup = document.getElementById('pushSetupBtn');
+    if (setup) setup.onclick = function () { pushSetup(setup, false); };
+    var reset = document.getElementById('pushResetBtn');
+    if (reset) reset.onclick = function () {
+      Mirage.confirm('ستُولَّد مفاتيح جديدة وتُلغى اشتراكات كل الأجهزة، فيعيد كل مستخدم تفعيل الإشعارات على جهازه (يتم تلقائياً عند فتح النظام إن كان قد سمح بها). استخدمه فقط إن تسرّبت المفاتيح.')
+        .then(function (yes) { if (yes) pushSetup(reset, true); });
+    };
+  });
+}
+
+/** يولّد زوج مفاتيح VAPID في المتصفح ويحفظه — لا يغادر المفتاح الخاص إلا إلى قاعدة بياناتك */
+function pushSetup(btn, reset) {
+  Mirage.busy(btn, true);
+  crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+    .then(function (kp) {
+      return Promise.all([crypto.subtle.exportKey('raw', kp.publicKey), crypto.subtle.exportKey('jwk', kp.privateKey)]);
+    })
+    .then(function (k) {
+      var jwk = { kty: k[1].kty, crv: k[1].crv, x: k[1].x, y: k[1].y, d: k[1].d };
+      return Mirage.api('push_setup', { public: Mirage.push._bytesToB64u(k[0]), private: JSON.stringify(jwk), reset: reset ? '1' : '0' });
+    })
+    .then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.toast(reset ? 'وُلّدت مفاتيح جديدة' : 'جُهّزت إشعارات الهاتف');
+      pushAdmin();
+    })
+    .catch(function (e) { Mirage.busy(btn, false); Mirage.fail({ message: 'تعذّر توليد المفاتيح في هذا المتصفح', raw: String(e) }); });
+}
+pushAdmin();
+
+
+/* ═══════════════ استيراد وتصدير ═══════════════ */
+
+/* أسماء الأوراق وأعمدتها: الاسم العربي في الملف ← المفتاح الذي يفهمه الخادم */
+var SH_EMP = 'الموظفون';
+var SH_USR = 'المستخدمون';
+var SH_REF = 'القيم المسموحة';
+
+var EMP_COLS = {
+  'الرقم الوظيفي': 'id', 'الاسم': 'name', 'الوظيفة': 'job', 'المشروع': 'project',
+  'المركز أو القسم': 'center', 'تاريخ التوظيف': 'hire_date', 'تاريخ بدء التدريب': 'training_start',
+  'ساعات العمل': 'hours', 'الجنسية': 'nationality', 'رقم الهوية': 'national_id',
+  'الهاتف': 'phone', 'المسؤول المباشر': 'supervisor', 'الحالة': 'state', 'ملاحظات': 'notes'
+};
+var USR_COLS = {
+  'اسم المستخدم': 'username', 'الاسم الكامل': 'real_name', 'المسمى الوظيفي': 'job_title',
+  'المركز أو القسم': 'center', 'الصلاحية والدور': 'role', 'يتبع لـ': 'manager',
+  'المشروع': 'project', 'مستوى الصلاحية': 'access_level', 'الحالة': 'state',
+  'يرسل إشعارات': 'can_notify', 'الصفحات المسموحة': 'pages',
+  'الرقم الوظيفي': 'emp_id', 'كلمة المرور': 'password'
+};
+
+var IMP = null;   /* { emp: [], usr: [] } بعد قراءة الملف */
+
+function ioStamp() { return Mirage.today().replace(/-/g, ''); }
+
+function ioFail(e) {
+  Mirage.fail({ message: (e && e.message) || 'تعذّر تنفيذ العملية', raw: String(e) });
+}
+
+/** يحوّل صفوف الورقة إلى مفاتيح الخادم، ويتجاهل الأعمدة الزائدة */
+function mapRows(rows, cols) {
+  return (rows || []).map(function (r) {
+    var o = {};
+    Object.keys(cols).forEach(function (ar) {
+      var v = r[ar];
+      if (v === undefined || v === null) v = '';
+      o[cols[ar]] = String(v).trim();
+    });
+    return o;
+  }).filter(function (o) {
+    return Object.keys(o).some(function (k) { return o[k] !== ''; });
+  });
+}
+
+function exportSheet(what) {
+  var btn = document.getElementById(what === 'emp' ? 'exEmp' : what === 'usr' ? 'exUsr' : 'exAll');
+  Mirage.busy(btn, true);
+
+  var jobs = [];
+  if (what !== 'usr') jobs.push(Mirage.api('export_employees', {}));
+  if (what !== 'emp') jobs.push(Mirage.api('export_users', {}));
+
+  Promise.all(jobs).then(function (res) {
+    for (var i = 0; i < res.length; i++) {
+      if (res[i].status !== 'success') { Mirage.busy(btn, false); return Mirage.fail(res[i]); }
+    }
+    var sheets = [];
+    if (what !== 'usr') sheets.push({ name: SH_EMP, header: Object.keys(EMP_COLS).concat(['أدخلها', 'تاريخ الإدخال']), rows: res[0].rows });
+    if (what !== 'emp') sheets.push({ name: SH_USR, header: Object.keys(USR_COLS).filter(function (h) { return h !== 'كلمة المرور'; }).concat(['تاريخ الإنشاء']), rows: res[what === 'usr' ? 0 : 1].rows });
+
+    var nm = what === 'emp' ? 'الموظفون' : what === 'usr' ? 'المستخدمون' : 'بيانات_ميراج';
+    return Mirage.saveXlsx(sheets, nm + '-' + ioStamp() + '.xlsx').then(function () {
+      Mirage.busy(btn, false);
+      Mirage.toast('نُزِّل الملف');
+    });
+  }).catch(function (e) { Mirage.busy(btn, false); ioFail(e); });
+}
+
+function downloadTemplate() {
+  var btn = document.getElementById('tplBtn');
+  Mirage.busy(btn, true);
+
+  Mirage.api('import_lists', {}).then(function (res) {
+    if (res.status !== 'success') { Mirage.busy(btn, false); return Mirage.fail(res); }
+    var L = res.lists || {};
+
+    /* ورقة القيم المسموحة: كل قائمة عمود، تُنسخ منه القيمة كما هي */
+    var cols = [
+      ['المشروع', L.projects || []], ['المركز أو القسم', L.centers || []],
+      ['الوظيفة / المسمى الوظيفي', L.jobs || []], ['الصلاحية والدور', L.roles || []],
+      ['مستوى الصلاحية', L.levels || []], ['المسؤول المباشر (مستخدمو النظام)', L.people || []],
+      ['الحالة', L.states || []]
+    ];
+    var high = cols.reduce(function (m, c) { return Math.max(m, c[1].length); }, 0);
+    var ref = [];
+    for (var i = 0; i < high; i++) {
+      var row = {};
+      cols.forEach(function (c) { row[c[0]] = c[1][i] || ''; });
+      ref.push(row);
+    }
+
+    var guide = [
+      { 'التعليمات': '١ — لا تغيّر أسماء الأوراق («' + SH_EMP + '» و«' + SH_USR + '») ولا عناوين الأعمدة.' },
+      { 'التعليمات': '٢ — اكتب سطراً لكل شخص تحت العناوين مباشرة، وابدأ من السطر الثاني.' },
+      { 'التعليمات': '٣ — في ورقة «' + SH_EMP + '»: «الاسم» إلزامي. واترك «الرقم الوظيفي» فارغاً للجديد ليُولَّد تلقائياً.' },
+      { 'التعليمات': '٤ — في ورقة «' + SH_USR + '»: «اسم المستخدم» و«الاسم الكامل» إلزاميان، و«كلمة المرور» للحساب الجديد وحده.' },
+      { 'التعليمات': '٥ — اسم المستخدم حروف إنكليزية صغيرة وأرقام بلا مسافات، مثل ahmad.m' },
+      { 'التعليمات': '٦ — التواريخ هكذا: 2026-01-25 · ساعات العمل رقم بين 1 و 24 · «يرسل إشعارات»: نعم أو لا.' },
+      { 'التعليمات': '٧ — المشروع والقسم والوظيفة والصلاحية: انسخها من ورقة «' + SH_REF + '» حرفاً بحرف.' },
+      { 'التعليمات': '٨ — مستوى الصلاحية: اكتب الرقم وحده (0 أو 1 أو 2 …).' },
+      { 'التعليمات': '٩ — إعادة استيراد الملف نفسه لا تُنشئ نسخة ثانية: الموجود يُحدَّث والجديد يُضاف.' },
+      { 'التعليمات': '١٠ — الفحص لا يكتب شيئاً في النظام؛ الكتابة تتم بزر «تنفيذ الاستيراد» وحده.' }
+    ];
+
+    var sheets = [
+      { name: SH_EMP, header: Object.keys(EMP_COLS), rows: [] },
+      { name: SH_USR, header: Object.keys(USR_COLS), rows: [] },
+      { name: SH_REF, header: cols.map(function (c) { return c[0]; }), rows: ref, widths: [22, 22, 26, 20, 24, 30, 12] },
+      { name: 'التعليمات', header: ['التعليمات'], rows: guide, widths: [110] }
+    ];
+
+    return Mirage.saveXlsx(sheets, 'نموذج_استيراد_ميراج-' + ioStamp() + '.xlsx').then(function () {
+      Mirage.busy(btn, false);
+      Mirage.ok('نُزِّل النموذج. املأ ورقتَي «' + SH_EMP + '» و«' + SH_USR + '» ثم ارفعه في خانة الاستيراد.', 'جاهز');
+    });
+  }).catch(function (e) { Mirage.busy(btn, false); ioFail(e); });
+}
+
+function pickFile() {
+  var f = document.getElementById('impFile').files[0];
+  var box = document.getElementById('impBox');
+  IMP = null;
+  document.getElementById('impCheck').disabled = true;
+  document.getElementById('impApply').disabled = true;
+  if (!f) { box.innerHTML = ''; return; }
+
+  box.innerHTML = '<span class="hint">جارٍ قراءة الملف…</span>';
+  Mirage.readXlsx(f).then(function (sheets) {
+    var emp = mapRows(sheets[SH_EMP], EMP_COLS);
+    var usr = mapRows(sheets[SH_USR], USR_COLS);
+
+    if (!sheets[SH_EMP] && !sheets[SH_USR]) {
+      box.innerHTML = '<div class="alert alert-warn">لم أجد ورقة باسم «' + SH_EMP + '» ولا «' + SH_USR +
+        '». نزّل النموذج من الأعلى واكتب بياناتك فيه.</div>';
+      return;
+    }
+    if (!emp.length && !usr.length) {
+      box.innerHTML = '<div class="alert alert-warn">الملف مقروء لكنه بلا بيانات.</div>';
+      return;
+    }
+
+    IMP = { emp: emp, usr: usr, name: f.name };
+    document.getElementById('impCheck').disabled = false;
+    box.innerHTML = '<div class="alert alert-info">قُرئ الملف: <b>' + esc(f.name) + '</b> — ' +
+      'الموظفون: ' + emp.length + ' سطراً · المستخدمون: ' + usr.length + ' سطراً. ' +
+      'اضغط «فحص الملف» قبل التنفيذ.</div>';
+  }).catch(function (e) { box.innerHTML = ''; ioFail(e); });
+}
+
+function runImport(apply) {
+  if (!IMP) return Mirage.note('اختر ملف إكسل أولاً.');
+  var btn = document.getElementById(apply ? 'impApply' : 'impCheck');
+  var add = document.getElementById('impAdd').checked;
+
+  var go = apply
+    ? Mirage.confirm('سيُكتب في قاعدة البيانات الآن: الموجود يُحدَّث والجديد يُضاف. ' +
+                     'راجِع نتيجة الفحص قبل المتابعة.', 'تأكيد الاستيراد')
+    : Promise.resolve(true);
+
+  go.then(function (yes) {
+    if (!yes) return;
+    Mirage.busy(btn, true);
+
+    var jobs = [];
+    if (IMP.emp.length) jobs.push(Mirage.api('import_employees', { rows: IMP.emp, apply: apply, add_missing: add }));
+    if (IMP.usr.length) jobs.push(Mirage.api('import_users', { rows: IMP.usr, apply: apply, add_missing: add }));
+
+    return Promise.all(jobs).then(function (res) {
+      Mirage.busy(btn, false);
+      for (var i = 0; i < res.length; i++) {
+        if (res[i].status !== 'success') return Mirage.fail(res[i]);
+      }
+      var parts = [];
+      var k = 0;
+      if (IMP.emp.length) parts.push({ title: 'الموظفون', r: res[k++] });
+      if (IMP.usr.length) parts.push({ title: 'المستخدمون', r: res[k++] });
+
+      paintImport(parts, apply);
+
+      var errs = parts.reduce(function (a, p) { return a + p.r.errors; }, 0);
+      if (!apply) {
+        document.getElementById('impApply').disabled = (errs > 0 && parts.every(function (p) {
+          return p.r.inserted + p.r.updated === 0;
+        }));
+        if (errs) {
+          Mirage.note('فيه ' + errs + ' سطراً لا يمكن استيراده — صحّحها في الملف ثم أعد الفحص. ' +
+                      'وإن نفّذت الآن فستُستورَد السطور السليمة وحدها.', 'نتيجة الفحص');
+        } else {
+          Mirage.ok('الملف سليم بالكامل. اضغط «تنفيذ الاستيراد».', 'نتيجة الفحص');
+        }
+      } else {
+        document.getElementById('impApply').disabled = true;
+        Mirage.ok('تم الاستيراد.' + (errs ? ' وبقي ' + errs + ' سطراً لم يُستورَد — راجع الجدول.' : ''), 'تم');
+        loadAll();
+      }
+    });
+  }).catch(function (e) { Mirage.busy(btn, false); ioFail(e); });
+}
+
+function paintImport(parts, applied) {
+  var h = '';
+  parts.forEach(function (p) {
+    var r = p.r;
+    h += '<div class="card" style="margin-bottom:14px">' +
+         '<div class="card-head"><div><h2>' + esc(p.title) + '</h2>' +
+         '<p>' + (applied ? 'ما نُفِّذ فعلاً' : 'ما سيحدث عند التنفيذ — لم يُكتب شيء بعد') + '</p></div></div>' +
+         '<div class="btn-row" style="gap:18px;flex-wrap:wrap">' +
+         '<span class="tag tag-green">' + (applied ? 'أُضيف' : 'سيُضاف') + ': ' + r.inserted + '</span>' +
+         '<span class="tag tag-blue">' + (applied ? 'حُدِّث' : 'سيُحدَّث') + ': ' + r.updated + '</span>' +
+         '<span class="tag ' + (r.errors ? 'tag-red' : 'tag-gray') + '">مرفوض: ' + r.errors + '</span>' +
+         '<span class="hint">من أصل ' + r.total + ' سطراً</span></div>';
+
+    if (r.added.length) {
+      var uniq = {};
+      r.added.forEach(function (a) { uniq[a.list + ' → ' + a.value] = 1; });
+      h += '<p class="hint" style="margin-top:12px">' +
+           (applied ? 'أُضيفت إلى القوائم: ' : 'ستُضاف إلى القوائم: ') +
+           esc(Object.keys(uniq).join(' · ')) + '</p>';
+    }
+
+    if (r.rows.length) {
+      h += '<div class="table-wrap" style="margin-top:12px"><table><thead><tr>' +
+           '<th>السطر</th><th>الاسم</th><th>سبب الرفض</th></tr></thead><tbody>' +
+           r.rows.map(function (x) {
+             return '<tr><td>' + (x.row || '—') + '</td><td>' + esc(x.name) + '</td>' +
+                    '<td>' + esc(x.message) + '</td></tr>';
+           }).join('') + '</tbody></table></div>';
+    }
+    h += '</div>';
+  });
+  document.getElementById('impBox').innerHTML = h;
+}
+
+
+/* ═══════════════ النسخ الاحتياطي ═══════════════ */
+
+function bkSize(n) {
+  n = Number(n || 0);
+  if (n < 1024) return n + ' بايت';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' ك.ب';
+  return (n / 1024 / 1024).toFixed(2) + ' م.ب';
+}
+
+function backupNew() {
+  var btn = document.getElementById('bkNew');
+  Mirage.busy(btn, true);
+  Mirage.api('backup_new', { label: document.getElementById('bkLabel').value }).then(function (res) {
+    Mirage.busy(btn, false);
+    if (res.status !== 'success') return Mirage.fail(res);
+    document.getElementById('bkLabel').value = '';
+    Mirage.ok('حُفظت نسخة من ' + Mirage.ltr(String(res.tables)) + ' جدولاً · ' +
+              Mirage.ltr(String(res.rows)) + ' صفاً · ' + bkSize(res.bytes) + '.', 'تمّت النسخة');
+    backupsLoad();
+  });
+}
+
+function backupsLoad() {
+  var box = document.getElementById('bkBox');
+  box.innerHTML = '<span class="hint">جارٍ التحميل…</span>';
+  Mirage.api('backups_list', {}).then(function (res) {
+    if (res.status !== 'success') { box.innerHTML = ''; return Mirage.fail(res); }
+    var items = res.items || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="empty"><span class="ico">📦</span><b>لا نسخة بعد</b>' +
+                      'اضغط «أخذ نسخة احتياطية» في الأعلى.</div>';
+      return;
+    }
+    var total = items.reduce(function (a, x) { return a + x.bytes; }, 0);
+    box.innerHTML =
+      '<div class="table-wrap"><table><thead><tr>' +
+      '<th>التاريخ</th><th>الوسم</th><th>أخذها</th><th>الحجم</th><th>الجداول</th><th>الصفوف</th><th></th>' +
+      '</tr></thead><tbody>' +
+      items.map(function (b) {
+        return '<tr><td style="white-space:nowrap">' + Mirage.ltr(b.at) + '</td>' +
+          '<td>' + (b.label ? esc(b.label) : '<span class="hint">—</span>') + '</td>' +
+          '<td>' + esc(b.by) + '</td>' +
+          '<td style="white-space:nowrap"><span class="tag tag-blue">' + bkSize(b.bytes) + '</span></td>' +
+          '<td>' + Mirage.ltr(String(b.tables)) + '</td>' +
+          '<td>' + Mirage.ltr(String(b.rows)) + '</td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="btn btn-ghost btn-sm" onclick="backupGet(' + b.id + ')">تنزيل</button> ' +
+            '<button class="btn btn-primary btn-sm" onclick="backupUse(' + b.id + ')">استعادة</button> ' +
+            '<button class="btn btn-danger btn-sm" onclick="backupDrop(' + b.id + ')">حذف</button>' +
+          '</td></tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:10px">' + Mirage.ltr(String(items.length)) +
+      ' نسخة · مجموع الأحجام ' + bkSize(total) + '</p>';
+    BK = items;
+  });
+}
+
+var BK = [];
+function bkOne(id) {
+  for (var i = 0; i < BK.length; i++) { if (BK[i].id === id) return BK[i]; }
+  return null;
+}
+
+function backupGet(id) {
+  var b = bkOne(id); if (!b) return;
+  Mirage.api('backup_url', { path: b.path }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    var a = document.createElement('a');
+    a.href = res.url; a.download = b.path; document.body.appendChild(a); a.click(); a.remove();
+    Mirage.toast('يُنزَّل الملف');
+  });
+}
+
+function backupDrop(id) {
+  var b = bkOne(id); if (!b) return;
+  Mirage.confirm('ستُحذف نسخة ' + Mirage.ltr(b.at) + ' نهائياً من المستودع والسجلّ.', 'حذف نسخة')
+    .then(function (yes) {
+      if (!yes) return;
+      Mirage.api('backup_delete', { id: id, path: b.path }).then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.toast('حُذفت النسخة'); backupsLoad();
+      });
+    });
+}
+
+function backupUse(id) {
+  var b = bkOne(id); if (!b) return;
+  Mirage.api('backup_read', { path: b.path }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    askRestore(res.data, 'نسخة ' + b.at + ' (' + bkSize(b.bytes) + ')');
+  });
+}
+
+function restoreFromFile() {
+  var f = document.getElementById('bkFile').files[0];
+  if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function () {
+    var data;
+    try { data = JSON.parse(fr.result); }
+    catch (e) { return Mirage.fail({ message: 'الملف ليس نسخة احتياطية صالحة' }); }
+    if (!data || !data.data) return Mirage.fail({ message: 'الملف ليس نسخة احتياطية من ميراج' });
+    askRestore(data, f.name + ' (' + bkSize(f.size) + ')');
+  };
+  fr.readAsText(f);
+  document.getElementById('bkFile').value = '';
+}
+
+/** الحاجز الأخير قبل الاستعادة: كتابة كلمة «استعادة» بخط اليد */
+function askRestore(data, what) {
+  var info = 'أُخذت في ' + Mirage.ltr(data.made_at || '—') +
+             ' — ' + Mirage.ltr(String(data.tables || 0)) + ' جدولاً · ' +
+             Mirage.ltr(String(data.rows || 0)) + ' صفاً' +
+             (data.made_by ? ' — بيد ' + data.made_by : '');
+
+  Swal.fire({
+    icon: 'warning',
+    title: 'استعادة البيانات',
+    html: '<div style="text-align:right;direction:rtl;font-size:14px;line-height:1.9">' +
+            '<p style="margin:0 0 10px"><b>' + esc(what) + '</b><br>' +
+            '<span style="font-size:12.5px;color:#64748B">' + esc(info) + '</span></p>' +
+            '<div class="alert alert-warn" style="text-align:right;margin:0 0 12px">' +
+              'كل البيانات الحالية في الجداول المشمولة ستُمحى ويحلّ محلّها ما في النسخة. ' +
+              'لا رجعة عن هذا إلا بنسخة أحدث. وحسابات الدخول وكلمات المرور لا تُمسّ.' +
+            '</div>' +
+            '<label style="font-weight:800;font-size:13px">اكتب كلمة «استعادة» للتأكيد</label>' +
+          '</div>',
+    input: 'text',
+    inputPlaceholder: 'استعادة',
+    inputAttributes: { style: 'text-align:center;font-weight:900' },
+    showCancelButton: true,
+    confirmButtonText: 'نفّذ الاستعادة',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#DC2626', cancelButtonColor: '#64748B',
+    width: 580
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    if (String(r.value || '').trim() !== 'استعادة') {
+      return Mirage.fail({ message: 'لم تُكتب كلمة التأكيد — لم يتغيّر شيء' });
+    }
+    Mirage.toast('جارٍ الاستعادة…', 'info');
+    Mirage.api('backup_restore', { data: data, confirm: 'استعادة' }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Swal.fire({
+        icon: 'success', title: 'استُعيدت البيانات',
+        html: '<div style="text-align:right;direction:rtl;font-size:14px;line-height:1.9">' +
+              'أُعيد ' + Mirage.ltr(String(res.tables)) + ' جدولاً و' +
+              Mirage.ltr(String(res.rows)) + ' صفاً.' +
+              (res.skipped_users
+                ? '<br><span style="color:#92400E">وتُجووِز عن ' + Mirage.ltr(String(res.skipped_users)) +
+                  ' حساباً لا وجود لحساب دخول له.</span>' : '') +
+              '<br>ستُحدَّث الصفحة الآن.</div>',
+        confirmButtonText: 'حسناً', confirmButtonColor: '#2563EB'
+      }).then(function () { location.reload(); });
+    });
+  });
+}
+
+document.querySelector('.tab[data-tab="bk"]').addEventListener('click', function () {
+  if (!BK.length) backupsLoad();
+});
+
+
+/* ═══════════════ كلمات المرور ═══════════════ */
+
+function setPwd(username, realName) {
+  Mirage.password.set(username, realName, function () { pwdLog(); });
+}
+
+function pwdLog() {
+  var box = document.getElementById('pwdBox');
+  box.innerHTML = '<span class="hint">جارٍ التحميل…</span>';
+  Mirage.api('password_events', { limit: 100 }).then(function (res) {
+    if (res.status !== 'success') { box.innerHTML = ''; return Mirage.fail(res); }
+    var items = res.items || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="empty"><span class="ico">🔑</span><b>لا تغييرات بعد</b>' +
+                      'سيظهر هنا كل تغيير لكلمة مرور، بصاحبه وتاريخه.</div>';
+      return;
+    }
+    box.innerHTML =
+      '<div class="table-wrap"><table><thead><tr>' +
+      '<th>التاريخ</th><th>الحساب</th><th>غيّرها</th><th>الصفة</th>' +
+      '</tr></thead><tbody>' +
+      items.map(function (e) {
+        return '<tr><td style="white-space:nowrap">' + Mirage.ltr(e.at) + '</td>' +
+          '<td>' + esc(e.name || e.username) + '</td>' +
+          '<td>' + esc(e.by) + '</td>' +
+          '<td>' + (e.self ? '<span class="tag tag-green">بنفسه</span>'
+                           : '<span class="tag tag-blue">مدير النظام</span>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  });
+}
+
+loadAll();
+</script>
+</body>
+</html>

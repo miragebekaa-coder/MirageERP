@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>اقتراحات تحسينية | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <!-- ١ — كتابة الاقتراح -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>💡 اقتراح تحسيني</h2>
+        <p>اكتب ما ترى أنه يُحسِّن العمل أو النظام. يصل اقتراحك إلى مدير النظام وحده.</p>
+      </div>
+    </div>
+
+    <form id="sForm">
+      <div class="field">
+        <label for="title">العنوان <span class="req">*</span></label>
+        <input type="text" id="title" maxlength="120" required placeholder="عنوان مختصر يلخّص الاقتراح">
+      </div>
+
+      <div class="field">
+        <label for="body">الشرح <span class="req">*</span></label>
+        <textarea id="body" rows="6" required placeholder="اشرح الاقتراح: ما المشكلة الحالية، وما الذي تقترحه، وما الفائدة المرجوّة"></textarea>
+        <div class="hint">كلّما كان الشرح أوضح، كان تنفيذ الاقتراح أسرع.</div>
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary" id="sendBtn">
+          <span class="btn-text">إرسال الاقتراح</span><span class="spinner"></span>
+        </button>
+        <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ٢ — الاقتراحات -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2 id="listTitle">اقتراحاتي</h2><p id="listSub">ما أرسلته أنت، وردّ مدير النظام عليه</p></div>
+      <button type="button" class="btn btn-ghost btn-sm" id="refreshBtn">تحديث</button>
+    </div>
+
+    <div class="grid-3 filters" id="adminFilters" style="display:none">
+      <div class="field"><label for="fState">الحالة</label>
+        <select id="fState">
+          <option value="">كل الحالات</option>
+          <option value="جديد">جديد</option>
+          <option value="قيد الدراسة">قيد الدراسة</option>
+          <option value="نُفِّذ">نُفِّذ</option>
+          <option value="مؤجَّل">مؤجَّل</option>
+          <option value="غير مناسب">غير مناسب</option>
+        </select>
+      </div>
+      <div class="field"><label for="fSender">المُرسِل</label><select id="fSender"></select></div>
+      <div class="field"><label for="fText">بحث</label>
+        <input type="search" id="fText" placeholder="العنوان، الشرح، المشروع…"></div>
+    </div>
+
+    <div id="rows"><div class="empty" style="padding:22px">جارٍ التحميل…</div></div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var SUGS = [], ISADMIN = false;
+
+var u = Mirage.boot({
+  page: 'suggestions',
+  title: 'اقتراحات تحسينية',
+  sub: 'اقتراحاتك تصل إلى مدير النظام وحده'
+});
+
+if (u) {
+  ISADMIN = Mirage.isAdmin();
+  if (ISADMIN) {
+    document.getElementById('listTitle').textContent = 'الاقتراحات الواردة';
+    document.getElementById('listSub').textContent = 'اسم المُرسِل وتاريخ الإرسال مع العنوان والشرح';
+    document.getElementById('adminFilters').style.display = '';
+    document.getElementById('fState').onchange = paint;
+    document.getElementById('fSender').onchange = paint;
+    document.getElementById('fText').oninput = paint;
+  }
+  document.getElementById('refreshBtn').onclick = load;
+
+  document.getElementById('sForm').onsubmit = function (e) {
+    e.preventDefault();
+    var title = document.getElementById('title').value.trim();
+    var body  = document.getElementById('body').value.trim();
+    if (!title) return Mirage.note('اكتب عنواناً مختصراً يلخّص الاقتراح.', 'العنوان مطلوب');
+    if (!body)  return Mirage.note('اشرح اقتراحك ليتمكّن مدير النظام من دراسته.', 'الشرح مطلوب');
+
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+    Mirage.api('suggestion_new', { title: title, body: body }).then(function (res) {
+      Mirage.busy(btn, false);
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('رقم الاقتراح ' + res.id + '، ووصل إلى مدير النظام وحده.', 'أُرسل اقتراحك');
+      document.getElementById('sForm').reset();
+      load();
+    });
+  };
+
+  load();
+}
+
+function load() {
+  Mirage.api('suggestions_list', {}).then(function (res) {
+    if (res.status !== 'success') {
+      document.getElementById('rows').innerHTML = '<div class="empty" style="padding:22px">' + esc(res.message) + '</div>';
+      return Mirage.fail(res);
+    }
+    SUGS = res.suggestions || [];
+    if (ISADMIN) {
+      var senders = [];
+      SUGS.forEach(function (s) { if (senders.indexOf(s.sender) < 0) senders.push(s.sender); });
+      var keep = document.getElementById('fSender').value;
+      Mirage.fillSelect('fSender', senders.map(function (n) { return { value: n, text: n }; }), 'كل المُرسِلين', '');
+      if (keep) document.getElementById('fSender').value = keep;
+    }
+    paint();
+  });
+}
+
+function paint() {
+  var list = SUGS.slice();
+  if (ISADMIN) {
+    var st = document.getElementById('fState').value;
+    var sn = document.getElementById('fSender').value;
+    var t  = document.getElementById('fText').value.trim();
+    if (st) list = list.filter(function (s) { return s.state === st; });
+    if (sn) list = list.filter(function (s) { return s.sender === sn; });
+    if (t)  list = list.filter(function (s) { return [s.title, s.body, s.project, s.sender, s.id].join(' ').indexOf(t) > -1; });
+  }
+
+  if (!list.length) {
+    document.getElementById('rows').innerHTML = '<div class="empty" style="padding:22px">' +
+      (ISADMIN ? 'لا اقتراحات بعد.' : 'لم ترسل أي اقتراح بعد.') + '</div>';
+    return;
+  }
+
+  document.getElementById('rows').innerHTML = list.map(function (s) {
+    return '<div class="sug-card">' +
+      '<div class="sug-top">' +
+        '<span class="sug-title">' + esc(s.title) + '</span>' +
+        Mirage.tag(s.state) +
+        '<span class="tag tag-gray">' + esc(s.id) + '</span>' +
+      '</div>' +
+      '<div class="sug-meta">' +
+        (ISADMIN || !s.mine
+          ? '👤 ' + esc(s.sender) + (s.sender_job ? ' — ' + esc(s.sender_job) : '') +
+            (s.project ? ' · ' + esc(s.project) : '') + ' · '
+          : '') +
+        '🕒 <span dir="ltr">' + esc(s.sent) + '</span>' +
+      '</div>' +
+      '<div class="sug-body">' + esc(s.body) + '</div>' +
+      (s.note ? '<div class="sug-note"><b>ردّ مدير النظام:</b> ' + esc(s.note) + '</div>' : '') +
+      (ISADMIN ? '<div><button class="btn btn-ghost btn-sm" onclick="answer(' + s.raw_id + ')">الردّ وتغيير الحالة</button></div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function answer(id) {
+  var s = SUGS.filter(function (x) { return x.raw_id === id; })[0];
+  if (!s) return;
+  var states = ['جديد', 'قيد الدراسة', 'نُفِّذ', 'مؤجَّل', 'غير مناسب'];
+  Swal.fire({
+    title: 'الردّ على الاقتراح',
+    html:
+      '<div style="text-align:right">' +
+        '<label class="swal-lbl">الحالة</label>' +
+        '<select id="swState" class="swal2-select" style="width:100%;margin:6px 0 14px">' +
+          states.map(function (x) {
+            return '<option value="' + x + '"' + (x === s.state ? ' selected' : '') + '>' + x + '</option>';
+          }).join('') +
+        '</select>' +
+        '<label class="swal-lbl">ملاحظة للمُقترِح (اختيارية)</label>' +
+        '<textarea id="swNote" class="swal2-textarea" style="width:100%;margin:6px 0 0" rows="4">' + esc(s.note) + '</textarea>' +
+      '</div>',
+    showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
+    focusConfirm: false,
+    preConfirm: function () {
+      return {
+        state: document.getElementById('swState').value,
+        note:  document.getElementById('swNote').value.trim()
+      };
+    }
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    Mirage.api('suggestion_answer', { id: id, state: r.value.state, note: r.value.note }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('حالة الاقتراح الآن: ' + r.value.state + '، ويراها صاحب الاقتراح.', 'حُفظ الردّ');
+      load();
+    });
+  });
+}
+</script>
+</body>
+</html>

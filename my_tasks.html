@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>مهامي | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <div class="card">
+    <div class="grid-3 filters">
+      <div class="field">
+        <label>المهام</label>
+        <div class="seg" id="fSource">
+          <label><input type="radio" name="src" value="all" checked><span>الكل</span></label>
+          <label><input type="radio" name="src" value="to_me"><span>كُلّفتُ بها</span></label>
+          <label><input type="radio" name="src" value="by_me"><span>سجّلتُها</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="fMonth">الشهر</label>
+        <select id="fMonth"><option value="">كل الأشهر</option></select>
+      </div>
+      <div class="field">
+        <label for="fState">الحالة</label>
+        <select id="fState">
+          <option value="open">غير المنجزة</option>
+          <option value="all">كل الحالات</option>
+          <option value="عالقة">عالقة</option>
+          <option value="قيد التنفيذ">قيد التنفيذ</option>
+          <option value="أنجزت">المنجزة</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cal-head">
+      <div>
+        <div class="cal-title" id="calTitle">—</div>
+        <p class="hint" style="margin:2px 0 0">كل مهمة في يومها — يوم الاستحقاق إن حُدّد، وإلا يوم تسجيلها. والرزنامة تتبع الفلتر أعلاه.</p>
+      </div>
+      <div class="cal-nav">
+        <button type="button" onclick="calMove(1)" title="الشهر التالي">‹</button>
+        <button type="button" onclick="calToday()" title="هذا الشهر">•</button>
+        <button type="button" onclick="calMove(-1)" title="الشهر السابق">›</button>
+      </div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-legend">
+      <span><i style="background:#EF4444"></i> عالقة</span>
+      <span><i style="background:#F59E0B"></i> قيد التنفيذ</span>
+      <span><i style="background:#10B981"></i> أنجزت</span>
+    </div>
+    <div id="calDay" style="margin-top:16px"></div>
+  </div>
+
+  <div class="grid-3">
+    <div class="stat is-danger"><div class="label">عالقة</div><div class="value" id="kStuck">—</div><div class="foot">لم تبدأ بعد</div></div>
+    <div class="stat is-warn"><div class="label">قيد التنفيذ</div><div class="value" id="kDoing">—</div></div>
+    <div class="stat is-success"><div class="label">أنجزت</div><div class="value" id="kDone">—</div></div>
+  </div>
+
+  <div class="card" id="secToMe">
+    <div class="card-head">
+      <div><h2>ما كُلّفتُ به</h2><p>مهام أحالها إليك مسؤولوك، ومهام سجّلتها لنفسك</p></div>
+      <span class="badge-pill" id="cToMe">—</span>
+    </div>
+    <div id="listToMe"><div class="empty">جارٍ التحميل…</div></div>
+  </div>
+
+  <div class="card" id="secByMe">
+    <div class="card-head">
+      <div><h2>ما سجّلتُه لغيري</h2><p>مهام كلّفتَ بها أحد فريقك أو تركتها بلا تكليف — تتابع حالتها من هنا</p></div>
+      <span class="badge-pill" id="cByMe">—</span>
+    </div>
+    <div id="listByMe"><div class="empty">جارٍ التحميل…</div></div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var TASKS = [];
+
+var u = Mirage.boot({
+  page: 'my_tasks',
+  title: 'مهامي',
+  sub: 'ما كُلّفتُ به وما سجّلتُه، مع تحديث الحالة والملاحظات'
+});
+
+if (u) {
+  document.querySelectorAll('input[name="src"]').forEach(function (r) { r.onchange = render; });
+  document.getElementById('fMonth').onchange = render;
+  document.getElementById('fState').onchange = render;
+  load();
+}
+
+function load() {
+  Mirage.api('my_tasks', {}).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    TASKS = res.tasks || [];
+
+    // الأشهر المتاحة من المهام نفسها، الأحدث أولاً
+    var months = TASKS.map(function (t) { return t.month; })
+      .filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort().reverse();
+    var cur = document.getElementById('fMonth').value;
+    Mirage.fillSelect('fMonth', months.map(function (m) { return { value: m, text: monthName(m) }; }), 'كل الأشهر', cur);
+    render();
+  });
+}
+
+function monthName(m) {
+  var names = ['كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول'];
+  return names[parseInt(m.slice(5, 7), 10) - 1] + ' ' + m.slice(0, 4);
+}
+
+function filtered() {
+  var src = document.querySelector('input[name="src"]:checked').value;
+  var month = document.getElementById('fMonth').value;
+  var st = document.getElementById('fState').value;
+  return TASKS.filter(function (t) {
+    if (src === 'to_me' && !t.assigned_to_me) return false;
+    if (src === 'by_me' && !t.created_by_me) return false;
+    if (month && t.month !== month) return false;
+    if (st === 'open' && t.state === 'أنجزت') return false;
+    if (st !== 'open' && st !== 'all' && t.state !== st) return false;
+    return true;
+  });
+}
+
+function render() {
+  var list = filtered();
+  var src = document.querySelector('input[name="src"]:checked').value;
+
+  // الإحصاءات تتبع التصفية بالمصدر والشهر، لا بالحالة
+  var base = TASKS.filter(function (t) {
+    var month = document.getElementById('fMonth').value;
+    if (src === 'to_me' && !t.assigned_to_me) return false;
+    if (src === 'by_me' && !t.created_by_me) return false;
+    return !month || t.month === month;
+  });
+  document.getElementById('kStuck').textContent = base.filter(function (t) { return t.state === 'عالقة'; }).length;
+  document.getElementById('kDoing').textContent = base.filter(function (t) { return t.state === 'قيد التنفيذ'; }).length;
+  document.getElementById('kDone').textContent  = base.filter(function (t) { return t.state === 'أنجزت'; }).length;
+
+  var toMe = list.filter(function (t) { return t.assigned_to_me || (t.created_by_me && !t.assignee); });
+  var byMe = list.filter(function (t) { return t.created_by_me && t.assignee && !t.assigned_to_me; });
+
+  document.getElementById('secToMe').style.display = src === 'by_me' && !toMe.length ? 'none' : '';
+  document.getElementById('secByMe').style.display = src === 'to_me' ? 'none' : '';
+  document.getElementById('cToMe').textContent = toMe.length + ' مهمة';
+  document.getElementById('cByMe').textContent = byMe.length + ' مهمة';
+
+  paint('listToMe', toMe, 'لا مهام عليك في هذا الاختيار.');
+  paint('listByMe', byMe, 'لم تسجّل مهام لغيرك في هذا الاختيار.');
+  renderCal(list);
+}
+
+
+/* ═══════════════ رزنامة المهام ═══════════════ */
+
+var CAL = { ym: '', day: '' };
+
+function ymOf(d) {
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+}
+function calMove(step) {
+  var p = CAL.ym.split('-');
+  var d = new Date(+p[0], +p[1] - 1 + step, 1);
+  CAL.ym = ymOf(d); CAL.day = '';
+  renderCal(filtered());
+}
+function calToday() {
+  CAL.ym = ymOf(new Date()); CAL.day = Mirage.today();
+  renderCal(filtered());
+}
+
+function renderCal(list) {
+  // الشهر المعروض: ما اختاره الفلتر، وإلا ما يتصفّحه المستخدم، وإلا هذا الشهر
+  var filterMonth = document.getElementById('fMonth').value;
+  if (filterMonth && filterMonth !== CAL._lastFilter) { CAL.ym = filterMonth; CAL.day = ''; }
+  CAL._lastFilter = filterMonth;
+  if (!CAL.ym) CAL.ym = ymOf(new Date());
+
+  var y = +CAL.ym.slice(0, 4), m = +CAL.ym.slice(5, 7);
+  document.getElementById('calTitle').textContent = monthName(CAL.ym);
+
+  // المهام المطابقة للفلتر، مجموعةً بيومها
+  var byDay = {};
+  list.forEach(function (t) {
+    var d = t.day || '';
+    if (!d) return;
+    (byDay[d] = byDay[d] || []).push(t);
+  });
+
+  var first = new Date(y, m - 1, 1);
+  var days = new Date(y, m, 0).getDate();
+  var lead = first.getDay();                 // الأحد = 0، وأسبوعنا يبدأ بالأحد
+  var today = Mirage.today();
+
+  var dow = ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
+  var h = dow.map(function (d) { return '<div class="cal-dow">' + d + '</div>'; }).join('');
+
+  for (var i = 0; i < lead; i++) h += '<div class="cal-day empty"></div>';
+
+  for (var dnum = 1; dnum <= days; dnum++) {
+    var iso = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + dnum).slice(-2);
+    var items = byDay[iso] || [];
+    var cls = 'cal-day' + (iso === today ? ' today' : '') + (iso === CAL.day ? ' picked' : '');
+
+    var dots = items.slice(0, 8).map(function (t) {
+      var k = t.state === 'أنجزت' ? 's-done' : t.state === 'قيد التنفيذ' ? 's-doing' : 's-stuck';
+      return '<i class="' + k + '"></i>';
+    }).join('');
+
+    h += '<button type="button" class="' + cls + '" onclick="calPick(\'' + iso + '\')">' +
+         (items.length ? '<span class="cnt">' + items.length + '</span>' : '') +
+         '<span class="n">' + dnum + '</span>' +
+         (dots ? '<span class="cal-dots">' + dots + '</span>' : '') +
+         '</button>';
+  }
+
+  document.getElementById('calGrid').innerHTML = h;
+  paintCalDay(byDay);
+}
+
+function calPick(iso) {
+  CAL.day = (CAL.day === iso) ? '' : iso;
+  renderCal(filtered());
+}
+
+function paintCalDay(byDay) {
+  var box = document.getElementById('calDay');
+  if (!CAL.day) { box.innerHTML = ''; return; }
+  var items = byDay[CAL.day] || [];
+  var title = 'مهام ' + Mirage.ltr(CAL.day);
+
+  if (!items.length) {
+    box.innerHTML = '<div class="alert alert-info" style="margin:0">' + title +
+                    ': لا مهمة في هذا اليوم ضمن الفلتر الحالي.</div>';
+    return;
+  }
+  box.innerHTML =
+    '<div class="card-head" style="margin-bottom:8px"><div><h2 style="font-size:15px">' + title +
+    '</h2></div><span class="badge-pill">' + items.length + ' مهمة</span></div>' +
+    '<div class="table-wrap"><table><thead><tr><th>المهمة</th><th>الجهة</th>' +
+    '<th>المُكلَّف</th><th>الحالة</th></tr></thead><tbody>' +
+    items.map(function (t) {
+      return '<tr><td>' + esc((t.description || '').slice(0, 90)) + '</td>' +
+             '<td>' + esc(t.entity || '—') + '</td>' +
+             '<td>' + esc(t.assignee || '—') + '</td>' +
+             '<td>' + Mirage.tag(t.state) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function paint(boxId, list, emptyText) {
+  var box = document.getElementById(boxId);
+  if (!list.length) {
+    box.innerHTML = '<div class="empty"><span class="ico">🎉</span><b>لا مهام هنا</b>' + emptyText + '</div>';
+    return;
+  }
+  box.innerHTML = list.map(function (t) {
+    var cls = 'task-card' +
+      (t.state === 'أنجزت' ? ' done' : (t.classification === 'عاجلة' ? ' urgent' : ''));
+    var source = t.assigned_to_me && t.created_by_me ? 'سجّلتها لنفسك'
+               : t.assigned_to_me ? 'كلّفك: ' + t.by
+               : t.assignee ? 'كلّفتَ بها: ' + t.assignee : 'سجّلتها بلا تكليف';
+    return '<div class="' + cls + '">' +
+      '<div class="desc">' + esc(t.description) + '</div>' +
+      '<div class="meta">' +
+        '<span>' + esc(t.id) + '</span>' +
+        '<span>المشروع: ' + esc(t.project || '—') + '</span>' +
+        '<span>' + esc(source) + '</span>' +
+        '<span>الجهة: ' + esc(t.entity || '—') + '</span>' +
+        '<span>' + esc(t.date) + '</span>' +
+      '</div>' +
+      Mirage.entryLine(t) +
+      '<div class="meta">' + Mirage.tag(t.classification) + ' ' + Mirage.tag(t.state) + '</div>' +
+      (t.direction ? '<div class="alert alert-info" style="margin:14px 0 0">توجيه الإدارة: ' +
+        esc(t.direction) + '</div>' : '') +
+      (t.notes ? '<div class="note-log">' + esc(t.notes) + '</div>' : '') +
+      (!t.can_act
+        ? '<div class="meta">تتابع حالتها فقط — يحدّثها المكلَّف بها.</div>'
+        : t.state === 'أنجزت'
+          ? '<div class="meta" style="color:var(--success);font-weight:800">أُنجزت في ' + esc(t.updated) + '</div>' +
+            '<div class="acts"><button class="btn btn-ghost btn-sm" onclick="addNote(\'' + esc(t.id) + '\')">إضافة ملاحظة</button></div>'
+          : '<div class="acts">' +
+            (t.state === 'عالقة'
+              ? '<button class="btn btn-ghost btn-sm" onclick="setState(\'' + esc(t.id) + '\',\'قيد التنفيذ\')">بدأت العمل عليها</button>'
+              : '') +
+            '<button class="btn btn-followup btn-sm" onclick="finish(\'' + esc(t.id) + '\')">تم الإنجاز</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="addNote(\'' + esc(t.id) + '\')">إضافة ملاحظة</button>' +
+            '</div>') +
+      '</div>';
+  }).join('');
+}
+
+function setState(id, state) {
+  Mirage.api('task_update', { id: id, state: state }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.toast('حُدِّثت الحالة');
+    load();
+  });
+}
+
+function finish(id) {
+  var t = TASKS.filter(function (x) { return x.id === id; })[0] || {};
+  Swal.fire({
+    title: 'تأكيد الإنجاز',
+    text: t.created_by_me ? 'ستُسجَّل المهمة منجزة.' : 'سيُشعَر من كلّفك بالمهمة بأنك أنجزتها.',
+    input: 'textarea',
+    inputPlaceholder: 'ما تم إنجازه (اختياري)',
+    showCancelButton: true,
+    confirmButtonText: 'نعم، أنجزتها',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#10B981',
+    cancelButtonColor: '#64748B'
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    Mirage.api('task_update', {
+      id: id, state: 'أنجزت', notes: (r.value || '').trim()
+    }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok(t.created_by_me ? 'سُجّل الإنجاز.' : 'سُجّل الإنجاز وأُشعِر من كلّفك بالمهمة.', 'تم');
+      load();
+    });
+  });
+}
+
+/** الملاحظة تُضاف بتاريخها واسمك تحت ما سبقها — لا تُمحى الملاحظات السابقة */
+function addNote(id) {
+  Swal.fire({
+    title: 'إضافة ملاحظة',
+    input: 'textarea',
+    inputPlaceholder: 'سير العمل، أو ما يعوق الإنجاز',
+    footer: 'تُضاف تحت الملاحظات السابقة ولا تحلّ محلّها',
+    showCancelButton: true,
+    confirmButtonText: 'حفظ',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#2563EB',
+    cancelButtonColor: '#64748B',
+    inputValidator: function (v) { if (!v || !v.trim()) return 'اكتب الملاحظة'; }
+  }).then(function (r) {
+    var v = (r.value || '').trim();
+    if (!r.isConfirmed || !v) return;
+    Mirage.api('task_update', { id: id, notes: v }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.toast('أُضيفت الملاحظة');
+      load();
+    });
+  });
+}
+</script>
+</body>
+</html>

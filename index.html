@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>ميراج ERP — المنظومة الإدارية</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+
+<!-- ═══════════ شاشة الدخول ═══════════ -->
+<div class="login-wrap" id="loginScreen" style="display:none">
+  <div class="login-card">
+    <img src="mirage.png" alt="ميراج" class="login-logo" onerror="this.style.display='none'">
+    <h1>المنظومة الإدارية</h1>
+    <p class="lead">سجّل الدخول للوصول إلى النماذج والتقارير المتاحة لك</p>
+    <form id="loginForm">
+      <div class="field">
+        <label for="username">اسم المستخدم</label>
+        <div class="input-icon-wrap">
+          <span class="ico">👤</span>
+          <input type="text" id="username" name="username" autocomplete="username" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="password">كلمة المرور</label>
+        <div class="input-icon-wrap">
+          <button type="button" class="pw-toggle" id="pwToggle"
+                  aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <div class="hint" id="pwHint" style="display:none">كلمة المرور ظاهرة الآن</div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn" style="margin-top:8px">
+        <span class="btn-text">تسجيل الدخول</span><span class="spinner"></span>
+      </button>
+    </form>
+    <div style="text-align:center;margin-top:22px">
+      <button type="button" onclick="Mirage.about()"
+              style="background:none;border:none;color:#64748B;font-family:inherit;
+                     font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:underline">
+        حول النظام
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ الرئيسية بعد الدخول ═══════════ -->
+<div class="layout" id="appScreen" style="display:none">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="content">
+
+      <div class="card" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="width:58px;height:58px;border-radius:50%;background:#EFF6FF;color:var(--brand-primary);
+                    display:flex;align-items:center;justify-content:center;font-size:26px;flex:0 0 auto">👋</div>
+        <div style="flex:1;min-width:200px">
+          <div id="homeName" style="font-size:22px;font-weight:900;color:var(--brand-dark)"></div>
+          <div id="homeMeta" style="font-size:13.5px;color:var(--text-muted);font-weight:700;margin-top:4px"></div>
+        </div>
+        <div id="homeDate" class="badge-pill"></div>
+      </div>
+
+      <div id="pushBanner"></div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>ما تستطيع فعله</h2>
+            <p>الصفحات المتاحة لك حسب الصلاحيات الممنوحة من مدير النظام</p>
+          </div>
+        </div>
+        <div class="grid-3" id="tileGrid"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var u = Mirage.session();
+
+  if (!u.realName) {
+    document.getElementById('loginScreen').style.display = 'flex';
+    // إظهار كلمة المرور وإخفاؤها
+    var pwBtn = document.getElementById('pwToggle');
+    pwBtn.onclick = function () {
+      var f = document.getElementById('password');
+      var show = f.type === 'password';
+      f.type = show ? 'text' : 'password';
+      pwBtn.textContent = show ? '🙈' : '👁';
+      pwBtn.title = show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور';
+      pwBtn.setAttribute('aria-label', pwBtn.title);
+      document.getElementById('pwHint').style.display = show ? 'block' : 'none';
+      f.focus();
+    };
+
+    document.getElementById('loginForm').onsubmit = function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('loginBtn');
+      Mirage.busy(btn, true);
+      Mirage.api('login', {
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value
+      }).then(function (res) {
+        if (res.status === 'success') {
+          Mirage.saveSession(res);
+          location.reload();
+        } else {
+          Mirage.busy(btn, false);
+          Mirage.fail(res, 'تعذّر الدخول');
+        }
+      });
+    };
+    return;
+  }
+
+  document.getElementById('appScreen').style.display = 'flex';
+  Mirage.boot({ page: 'home', title: 'الرئيسية', sub: 'ميراج — المنظومة الإدارية', guard: false });
+  Mirage.push.card('pushBanner', true);
+
+  document.getElementById('homeName').textContent = u.realName;
+  document.getElementById('homeMeta').textContent =
+    [u.jobTitle, u.department, u.project].filter(Boolean).join('  ·  ') || u.role;
+  document.getElementById('homeDate').textContent = Mirage.today();
+
+  // إشعار المستخدم بمهامه الجديدة فور الدخول
+  Mirage.api('notifications_list', { unread: '1' }).then(function (res) {
+    if (res.status !== 'success') return;
+    var items = res.items || [];
+    if (!items.length) return;
+
+    var assigned = items.filter(function (n) { return n.kind === 'assigned'; }).length;
+    var done     = items.filter(function (n) { return n.kind === 'completed'; }).length;
+    var notes    = items.filter(function (n) { return n.kind === 'note'; });
+
+    Swal.fire({
+      icon: 'info',
+      title: 'لديك ' + items.length + ' إشعار جديد',
+      html: '<div style="text-align:right;direction:rtl;line-height:2;font-size:14px">' +
+        (assigned ? '<div>📋 مهام جديدة كُلّفت بها: <b>' + assigned + '</b></div>' : '') +
+        (done ? '<div>✅ مهام أنجزها من كلّفتهم: <b>' + done + '</b></div>' : '') +
+        (notes.length
+          ? '<div style="margin-top:10px;border-right:3px solid #2563EB;background:#EFF6FF;' +
+            'border-radius:8px;padding:10px 12px">' +
+            notes.map(function (n) {
+              return '<div style="font-weight:900;font-size:13.5px;color:#0F172A">' + esc(n.title) + '</div>' +
+                     (n.body ? '<div style="font-size:12.5px;color:#334155">' + esc(n.body) + '</div>' : '');
+            }).join('<hr style="border:0;border-top:1px solid #BFDBFE;margin:8px 0">') +
+            '</div>'
+          : '') +
+        '</div>',
+      showCancelButton: true,
+      confirmButtonText: assigned ? 'عرض مهامي' : 'عرض الإشعارات',
+      cancelButtonText: 'لاحقاً',
+      confirmButtonColor: '#8B5CF6',
+      cancelButtonColor: '#64748B'
+    }).then(function (r) {
+      if (!r.isConfirmed) return;
+      if (assigned && Mirage.can('my_tasks')) location.href = 'my_tasks.html';
+      else Mirage.showNotifications();
+    });
+  });
+
+  var grid = document.getElementById('tileGrid');
+  var mine = MIRAGE_PAGES.filter(function (p) { return Mirage.can(p.key); });
+
+  if (!mine.length) {
+    grid.outerHTML = '<div class="empty"><span class="ico">🔒</span>' +
+      '<b>لم تُمنح أي صفحة بعد</b>راجع مدير النظام ليحدّد لك النماذج المسموحة.</div>';
+    return;
+  }
+
+  grid.innerHTML = mine.map(function (p) {
+    var accent = p.tone === 'followup' ? 'var(--brand-followup)' : 'var(--brand-primary)';
+    return '<button class="home-tile" style="--tile-accent:' + accent + '" ' +
+           'onclick="location.href=\'' + p.file + '\'">' +
+           '<span class="ht-ico">' + p.ico + '</span>' +
+           '<span class="ht-txt">' +
+             '<span class="ht-label">' + esc(p.label) + '</span>' +
+             '<span class="ht-group">' + esc(p.group) + '</span>' +
+           '</span></button>';
+  }).join('');
+})();
+</script>
+</body>
+</html>

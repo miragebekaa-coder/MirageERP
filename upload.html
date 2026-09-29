@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0F172A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ميراج">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>إرسال ملف | ميراج ERP</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+<style>
+  .drop {
+    border: 2px dashed var(--brand-primary); border-radius: var(--radius-md);
+    background: #EFF6FF; padding: 32px 20px; text-align: center;
+    position: relative; cursor: pointer; transition: background .2s;
+  }
+  .drop:hover, .drop.over { background: #DBEAFE; }
+  .drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop .ico { font-size: 30px; display: block; margin-bottom: 10px; }
+  .drop .txt { color: var(--brand-primary); font-weight: 800; font-size: 14.5px; }
+  .drop .picked { display: block; margin-top: 10px; font-size: 13px; color: var(--success); font-weight: 800; }
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <div class="alert alert-info" id="routeNote" style="display:none"></div>
+  <div class="alert alert-success" id="savedNote" style="display:none"></div>
+
+  <form id="upForm">
+    <div class="card">
+      <div class="card-head"><div><h2>بيانات المراسلة</h2><p>تُؤرشف الملفات في مستودع النظام، ويبقى اسم الملف الأصلي كما هو</p></div></div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="project">المشروع</label>
+          <select id="project" required></select>
+          <div class="hint" id="projectNote"></div>
+        </div>
+        <div class="field">
+          <label for="subject">الموضوع أو التصنيف</label>
+          <select id="subject" required></select>
+        </div>
+        <div class="field">
+          <label>المُرسل</label>
+          <input type="text" id="sender" readonly>
+        </div>
+        <div class="field">
+          <label for="recipient">الجهة المُرسل إليها (القسم) <span class="req">*</span></label>
+          <select id="recipient" required></select>
+          <div class="hint">اختر القسم، ثم اختر من يعمل فيه من القائمة أدناه</div>
+        </div>
+        <div class="field">
+          <label for="date">تاريخ الإرسال</label>
+          <input type="date" id="date" required>
+        </div>
+        <div class="field">
+          <label for="method">طريقة الإرسال</label>
+          <select id="method" required>
+            <option value="">اختر الطريقة…</option>
+            <option value="إلكتروني">إلكتروني (مرفق)</option>
+            <option value="يدوي">يدوي (باليد)</option>
+            <option value="بريد مسجل">بريد مسجل</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>🔒 من يفتح الملف وينزّله في هذا القسم <span class="req">*</span></h2>
+        <p id="readersSub">اختر القسم أولاً، ثم اختر شخصاً أو أكثر من العاملين فيه</p></div>
+      </div>
+      <div id="readers"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>الملف</h2><p>الحد الأقصى 8 ميجابايت للملف الواحد</p></div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="checkStorage()">فحص المستودع</button>
+      </div>
+      <div id="storeNote"></div>
+
+      <div class="drop" id="drop">
+        <span class="ico">📄</span>
+        <span class="txt">اضغط لاختيار ملف، أو اسحبه وأفلته هنا</span>
+        <input type="file" id="file" required>
+        <span class="picked" id="picked"></span>
+      </div>
+
+      <div class="field" style="margin-top:20px">
+        <label for="notes">ملاحظات</label>
+        <textarea id="notes" rows="3" placeholder="تفاصيل أو سياق حول الملف المرفق"></textarea>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary" id="sendBtn">
+        <span class="btn-text">إرسال وأرشفة الملف</span><span class="spinner"></span>
+      </button>
+      <button type="button" class="btn btn-ghost" id="rememberBtn" onclick="rememberChoices()">💾 تذكُّر هذه الخيارات</button>
+      <button type="button" class="btn btn-ghost" onclick="location.href='index.html'">العودة للرئيسية</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>أحدث ما أرسلتُه</h2><p>كل ملفاتك الواردة والمرسلة في صفحة «ملفاتي»</p></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" onclick="loadFiles()">تحديث</button>
+        <button class="btn btn-ghost btn-sm" onclick="location.href='my_files.html'">🗂️ ملفاتي</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>الرقم</th><th>التاريخ</th><th>الملف</th><th>الموضوع</th>
+        <th>يفتحه</th><th></th></tr></thead>
+        <tbody id="fileRows"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:22px">جارٍ التحميل…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var MAX_MB = 8;
+var PICK = null;
+
+var u = Mirage.boot({
+  page: 'upload',
+  title: 'إرسال وتوثيق الملفات',
+  sub: 'أرشيف المستندات والمخاطبات الرسمية'
+});
+
+if (u) {
+  document.getElementById('sender').value = u.realName;
+  document.getElementById('date').value   = Mirage.today();
+
+  Mirage.lists().then(function (res) {
+    Mirage.fillProjectScope('project', res, { single: true });
+    Mirage.fillSelect('subject',   res.subjects || [], 'اختر الموضوع…');
+    // الجهة المُرسل إليها = قسم من أقسام الشركة، ومستلمو الملف من العاملين فيه
+    Mirage.fillSelect('recipient', res.centers || [], 'اختر القسم المستلم…');
+
+    Mirage.adder('subject', 'subjects', 'موضوع');
+    Mirage.adder('project', 'projects', 'مشروع');
+
+    applySaved();                     // الخيارات المحفوظة تُختار تلقائياً، ويمكن تغييرها
+  });
+
+  PICK = Mirage.userPicker('readers', {
+    filter: function () { return false; },
+    emptyText: 'اختر القسم المُرسل إليه أولاً.'
+  });
+
+  document.getElementById('recipient').onchange = function () {
+    var dept = this.value;
+    document.getElementById('readersSub').textContent = dept
+      ? 'المستخدمون العاملون في ' + dept + ' — اختر شخصاً أو أكثر'
+      : 'اختر القسم أولاً، ثم اختر شخصاً أو أكثر من العاملين فيه';
+    PICK.setFilter(
+      dept ? function (x) { return x.center === dept; } : function () { return false; },
+      dept ? 'لا مستخدمين نشطين في ' + esc(dept) + '.' : 'اختر القسم المُرسل إليه أولاً.'
+    );
+  };
+  routeNote();
+  checkStorage(true);
+  loadFiles();
+
+  var drop = document.getElementById('drop');
+  var input = document.getElementById('file');
+
+  input.onchange = function () {
+    var f = this.files[0];
+    document.getElementById('picked').textContent = f ? 'المرفق: ' + f.name +
+      ' (' + (f.size / 1048576).toFixed(2) + ' م.ب)' : '';
+  };
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; input.onchange(); }
+  });
+
+  document.getElementById('upForm').onsubmit = function (e) {
+    e.preventDefault();
+    var f = input.files[0];
+    if (!document.getElementById('recipient').value) {
+      return Mirage.note('اختر القسم المُرسل إليه أولاً.', 'الجهة مطلوبة');
+    }
+    if (!PICK.get().length) {
+      document.getElementById('readers').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return Mirage.note('اختر شخصاً واحداً على الأقل من العاملين في القسم المختار.', 'المستلم مطلوب');
+    }
+    if (!f) return Mirage.note('اختر ملفاً أولاً');
+    if (f.size > MAX_MB * 1048576) {
+      return Mirage.fail('حجم الملف ' + (f.size / 1048576).toFixed(1) +
+        ' م.ب، والحد الأقصى ' + MAX_MB + ' م.ب. اضغط الملف أو قسّمه.', 'الملف كبير');
+    }
+
+    var btn = document.getElementById('sendBtn');
+    Mirage.busy(btn, true);
+
+    var reader = new FileReader();
+    reader.onerror = function () {
+      Mirage.busy(btn, false);
+      Mirage.fail('تعذّرت قراءة الملف من جهازك');
+    };
+    reader.onload = function () {
+      Mirage.api('file_new', {
+        project:   document.getElementById('project').value,
+        subject:   document.getElementById('subject').value,
+        sender:    u.realName,
+        recipient: document.getElementById('recipient').value,
+        date:      document.getElementById('date').value,
+        method:    document.getElementById('method').value,
+        notes:     document.getElementById('notes').value.trim(),
+        readers:   PICK.get(),
+        file_name: f.name,
+        mime_type: f.type || 'application/octet-stream',
+        file_data: String(reader.result).split(',')[1]
+      }).then(function (res) {
+        Mirage.busy(btn, false);
+        if (res.status !== 'success') return Mirage.fail(res);
+        var to = (res.readers || []).join('، ');
+        if (res.stage === 'مُمرَّر') {
+          Mirage.ok('رقم المراسلة ' + res.id + '. وصل إلى: ' + to + ' — وأُشعِروا بوصوله.', 'أُرسل الملف');
+        } else {
+          Mirage.ok('رقم المراسلة ' + res.id + '. وصل إلى مسؤولك المباشر ' + res.manager +
+                    '، وبعد تمريره يصل إلى: ' + to + '.', 'أُرسل الملف للاعتماد');
+        }
+        PICK.clear();
+        document.getElementById('upForm').reset();
+        document.getElementById('picked').textContent = '';
+        document.getElementById('sender').value = u.realName;
+        document.getElementById('date').value = Mirage.today();
+        applySaved();                 // الخيارات المحفوظة تعود مختارة للملف التالي
+        loadFiles();
+      });
+    };
+    reader.readAsDataURL(f);
+  };
+}
+
+/** يفحص مستودع الملفات ويسمّي المشكلة إن وُجدت */
+function checkStorage(silent) {
+  var box = document.getElementById('storeNote');
+  if (!silent) box.innerHTML = '<div class="alert alert-info">جارٍ فحص المستودع…</div>';
+
+  return Mirage.api('storage_check', {}).then(function (res) {
+    if (res.status === 'success') {
+      box.innerHTML = silent ? '' :
+        '<div class="alert alert-info">المستودع «' + esc(res.bucket) + '» يعمل، والرفع متاح.</div>';
+      return true;
+    }
+    box.innerHTML = '<div class="alert alert-danger">' +
+      '<b>' + esc(res.message) + '</b><br>' +
+      '<span style="font-weight:500">' + esc(res.detail || '') + '</span>' +
+      (res.raw ? '<pre style="direction:ltr;text-align:left;white-space:pre-wrap;font-size:11px;' +
+        'background:#fff;padding:9px;border-radius:8px;margin-top:9px">' + esc(res.raw) + '</pre>' : '') +
+      '</div>';
+    return false;
+  });
+}
+
+/* ─────────── تذكُّر خيارات الإرسال ───────────
+   تُحفظ في هذا المتصفح لهذا المستخدم وحده، ولا تُرسل إلى الخادم. */
+var SAVE_KEY = 'uploadPrefs:' + (Mirage.session().username || '');
+
+function readSaved() {
+  try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; }
+}
+
+/** يحفظ ما هو مختار الآن: المشروع والموضوع والقسم والمستلمون وطريقة الإرسال */
+function rememberChoices() {
+  var v = {
+    project:   document.getElementById('project').value,
+    subject:   document.getElementById('subject').value,
+    recipient: document.getElementById('recipient').value,
+    method:    document.getElementById('method').value,
+    readers:   PICK.get()
+  };
+  if (!v.project && !v.subject && !v.recipient && !v.method && !v.readers.length) {
+    return Mirage.note('املأ الخيارات التي تريد تثبيتها أولاً، ثم اضغط «تذكُّر هذه الخيارات».', 'لا خيارات بعد');
+  }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(v)); }
+  catch (e) { return Mirage.fail('تعذّر الحفظ في هذا المتصفح.'); }
+  paintSaved(v);
+  Mirage.toast('حُفظت خياراتك — تُختار تلقائياً في المرة القادمة');
+}
+
+function forgetChoices() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  document.getElementById('savedNote').style.display = 'none';
+  Mirage.toast('أُلغي التذكُّر');
+}
+
+/** يطبّق المحفوظ على النموذج: يُختار تلقائياً ويبقى قابلاً للتغيير */
+function applySaved() {
+  var v = readSaved();
+  if (!v) return;
+  ['project', 'subject', 'recipient', 'method'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (v[id] && el.querySelector('option[value="' + String(v[id]).replace(/"/g, '\\"') + '"]')) el.value = v[id];
+  });
+  if (v.recipient) document.getElementById('recipient').dispatchEvent(new Event('change'));
+  if ((v.readers || []).length) {
+    // القائمة تُحمَّل بعد لحظة: يُعاد المحاولة حتى تظهر أسماء القسم
+    var tries = 0;
+    var tick = setInterval(function () {
+      var boxes = document.querySelectorAll('#readers_list input[type=checkbox]');
+      if (boxes.length) {
+        boxes.forEach(function (c) {
+          if (v.readers.indexOf(c.value) > -1 && !c.checked) { c.checked = true; c.onchange(); }
+        });
+        clearInterval(tick);
+      }
+      if (++tries > 20) clearInterval(tick);
+    }, 250);
+  }
+  paintSaved(v);
+}
+
+function paintSaved(v) {
+  var box = document.getElementById('savedNote');
+  var bits = [
+    v.project && 'المشروع: ' + v.project,
+    v.subject && 'الموضوع: ' + v.subject,
+    v.recipient && 'القسم: ' + v.recipient,
+    (v.readers || []).length && 'المستلمون: ' + v.readers.join('، '),
+    v.method && 'الطريقة: ' + v.method
+  ].filter(Boolean);
+  box.style.display = '';
+  box.innerHTML = '<b>خياراتك المحفوظة اختيرت تلقائياً:</b> ' + esc(bits.join(' · ')) +
+    ' <button type="button" class="btn btn-ghost btn-sm" style="margin-right:10px" onclick="forgetChoices()">إلغاء التذكُّر</button>' +
+    '<div class="hint" style="margin:6px 0 0">يمكنك تغيير أي خيار الآن، ثم «تذكُّر هذه الخيارات» لتحديث المحفوظ.</div>';
+}
+
+/** المسار الذي سيسلكه الملف: مسؤولك المباشر أولاً ثم الجهات المحددة */
+function routeNote() {
+  var box = document.getElementById('routeNote');
+  Mirage.api('my_manager', {}).then(function (res) {
+    box.style.display = '';
+    if (res.status === 'success' && res.manager) {
+      box.innerHTML = '<b>مسار هذا الملف:</b> يصل أولاً إلى مسؤولك المباشر <b>' + esc(res.manager) +
+        '</b> — يطّلع عليه ويكتب تعليقه ثم يمرّره، فيصل عندها إلى الجهات التي تختارها أدناه ' +
+        '(ويبقى هو قادراً على رؤيته).';
+    } else {
+      box.innerHTML = '<b>مسار هذا الملف:</b> لا مسؤول مباشر لك في النظام، فيصل الملف مباشرةً ' +
+        'إلى الجهات التي تختارها أدناه.';
+    }
+  });
+}
+
+function loadFiles() {
+  Mirage.api('files_list', { limit: 40 }).then(function (res) {
+    var box = document.getElementById('fileRows');
+    if (res.status !== 'success') {
+      box.innerHTML = '<tr><td colspan="6" class="td-empty">' + esc(res.message) + '</td></tr>';
+      return;
+    }
+    var list = (res.files || []).filter(function (f) { return f.mine; }).slice(0, 15);
+    box.innerHTML = list.length
+      ? list.map(function (f) {
+          return '<tr><td style="font-weight:800">' + esc(f.id) + Mirage.entryLine(f) + '</td>' +
+            '<td style="white-space:nowrap">' + esc(f.date) + '</td>' +
+            '<td style="font-weight:700">' + esc(f.file_name || '—') +
+              (f.waiting ? '<div class="hint" style="margin:2px 0 0">⏳ عند ' + esc(f.manager) + ' للتمرير</div>' : '') +
+              (f.held ? ' <span class="tag tag-red">لم يُمرَّر</span>' : '') +
+              (f.note ? '<div class="hint" style="margin:2px 0 0">💬 ' + esc(f.note) + '</div>' : '') + '</td>' +
+            '<td>' + esc(f.subject || '—') + '</td>' +
+            '<td>' + (f.restricted ? '🔒 ' + esc(f.readers.join('، ')) : '<span class="hint" style="margin:0">حسب الصلاحيات (ملف قديم)</span>') + '</td>' +
+            '<td>' + Mirage.fileButtons(f) + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="6" class="td-empty">لم ترسل ملفات بعد.</td></tr>';
+  });
+}
+</script>
+</body>
+</html>
