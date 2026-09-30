@@ -800,7 +800,52 @@
 <script src="admin/attend.js"></script>
 <script src="admin/health.js"></script>
 <script>
-loadAll();
+/* ─────────── حارس الوحدات ───────────
+   صفحة الإدارة مقسّمة إلى ملفات في مجلد admin. وإن نقص أحدها عند
+   الرفع، كانت الصفحة تموت برسالة إنكليزية غامضة. هذا يقول ما ينقص بالاسم. */
+
+(function () {
+  var need = [
+    ['admin/core.js',      typeof TOKENS],
+    ['admin/lists.js',     typeof loadAll],
+    ['admin/merge.js',     typeof mergePreview],
+    ['admin/users.js',     typeof paintUsers],
+    ['admin/catalog.js',   typeof paintCatalog],
+    ['admin/flows.js',     typeof loadFlow],
+    ['admin/server.js',    typeof pushAdmin],
+    ['admin/io.js',        typeof exportSheet],
+    ['admin/backup.js',    typeof backupsLoad],
+    ['admin/passwords.js', typeof setPwd],
+    ['admin/health.js',    typeof healthLoad],
+    ['admin/attend.js',    typeof attLoad]
+  ];
+  var miss = need.filter(function (x) { return x[1] === 'undefined'; })
+                 .map(function (x) { return x[0]; });
+
+  if (miss.length) {
+    document.querySelector('.content').innerHTML =
+      '<div class="card" style="max-width:720px;margin:0 auto">' +
+        '<div class="alert alert-danger" style="margin:0 0 16px;text-align:right">' +
+          '<b>ملفات ناقصة في الاستضافة</b><br>' +
+          'صفحة الإدارة مقسّمة إلى وحدات في مجلد <b>admin</b>، ولم يصل منها ' +
+          miss.length + ' ملفاً.' +
+        '</div>' +
+        '<p style="font-size:14px;line-height:2;text-align:right">الملفات الناقصة:</p>' +
+        '<ul style="text-align:right;direction:ltr;font-family:monospace;font-size:13px;' +
+          'line-height:2;background:#F1F5F9;border-radius:10px;padding:14px 22px">' +
+          miss.map(function (m) { return '<li>' + m + '</li>'; }).join('') +
+        '</ul>' +
+        '<p style="font-size:13.5px;line-height:2;text-align:right;color:#475569">' +
+          'ارفع مجلد <b>admin</b> كاملاً (اثنا عشر ملفاً) إلى الاستضافة بجانب ' +
+          '<b>admin.html</b>، ثم أعد تحميل الصفحة بـ Ctrl+F5. ' +
+          'وتأكّد من رفع مجلد <b>vendor</b> كذلك.' +
+        '</p>' +
+      '</div>';
+    return;
+  }
+
+  loadAll();
+})();
 </script>
 </body>
 </html>
