@@ -221,6 +221,20 @@ const MirageAPI = {
   num: function (v) { var n = Number(v); return isNaN(n) ? 0 : n; },
   str: function (v) { return v === undefined || v === null ? "" : String(v).trim(); },
 
+  /* ─────────── بصمة الجهاز ───────────
+     معرّف عشوائي يبقى في هذا المتصفح وحده. لا يحمل أي بيان شخصي،
+     وفائدته الوحيدة أن يُظهر حين يسجّل جهاز واحد لأكثر من شخص. */
+  devId: function () {
+    try {
+      var k = "mgDevice", v = localStorage.getItem(k);
+      if (!v) {
+        v = (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).toUpperCase();
+        localStorage.setItem(k, v);
+      }
+      return v;
+    } catch (e) { return null; }
+  },
+
   /* ─────────── سقف الصفوف ───────────
      جلب جدول كامل إلى المتصفح يبطئه مع نمو البيانات. فيُطلب عدد
      السجلات الفعلي مع أول ألفي سطر، وإن زادت أُعلِم المستخدم صراحةً
@@ -1079,14 +1093,25 @@ const MirageAPI = {
         p_lat: (p.lat === undefined || p.lat === null || p.lat === "") ? null : Number(p.lat),
         p_lng: (p.lng === undefined || p.lng === null || p.lng === "") ? null : Number(p.lng),
         p_acc: (p.acc === undefined || p.acc === null || p.acc === "") ? null : Number(p.acc),
-        p_agent: navigator.userAgent
+        p_agent: navigator.userAgent,
+        p_device: this.devId()
       });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تسجيل الدوام");
       var d = r.data || {};
+      // الخادم رفض التسجيل (خارج النطاق مثلاً) — والمحاولة محفوظة عنده
+      if (d.status === "rejected") {
+        return {
+          status: "error", blocked: true,
+          message: d.reason || "لم يُقبل التسجيل من مكانك الحالي",
+          flags: d.flags || [],
+          distance: Number(d.distance || 0), radius: Number(d.radius || 0)
+        };
+      }
       return {
         status: "success", kind: d.kind, site: d.site, at: d.at,
         distance: Number(d.distance || 0), inside: d.inside,
-        source: d.source, hours: Number(d.hours_today || 0), radius: Number(d.radius || 0)
+        source: d.source, hours: Number(d.hours_today || 0), radius: Number(d.radius || 0),
+        flags: d.flags || []
       };
     },
 
@@ -1105,11 +1130,23 @@ const MirageAPI = {
         p_from: this.str(p.from), p_to: this.str(p.to),
         p_reason: this.str(p.reason) || null,
         p_lat: (p.lat === undefined || p.lat === null || p.lat === "") ? null : Number(p.lat),
-        p_lng: (p.lng === undefined || p.lng === null || p.lng === "") ? null : Number(p.lng)
+        p_lng: (p.lng === undefined || p.lng === null || p.lng === "") ? null : Number(p.lng),
+        p_acc: (p.acc === undefined || p.acc === null || p.acc === "") ? null : Number(p.acc),
+        p_device: this.devId()
       });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تسجيل الإجازة");
       var d = r.data || {};
-      return { status: "success", id: d.id, days: Number(d.days || 0), kind: d.kind };
+      if (d.status === "rejected") {
+        return {
+          status: "error", blocked: true,
+          message: d.reason || "لم يُقبل التسجيل من مكانك الحالي",
+          flags: d.flags || [], distance: Number(d.distance || 0)
+        };
+      }
+      return {
+        status: "success", id: d.id, days: Number(d.days || 0), kind: d.kind,
+        flags: d.flags || []
+      };
     },
 
     leave_decide: async function (p) {
@@ -1260,7 +1297,14 @@ const MirageAPI = {
           daily: Number(d.daily_hours || 8), week_days: Number(d.week_days || 6),
           weekend: d.weekend || [], grace: Number(d.grace_min || 15),
           gap: Number(d.min_gap_min || 5), max_shift: Number(d.max_shift_hours || 16),
-          require_location: d.require_location !== false, note: d.note || ""
+          require_location: d.require_location !== false, note: d.note || "",
+          outside: d.outside_action || "block",
+          max_acc: Number(d.max_accuracy_m === undefined ? 250 : d.max_accuracy_m),
+          max_speed: Number(d.max_speed_kmh === undefined ? 200 : d.max_speed_kmh),
+          device_guard: d.device_guard !== false,
+          leave_outside: d.leave_outside !== false,
+          notify_flags: d.notify_flags !== false,
+          watch: d.flag_watch || []
         }
       };
     },
@@ -1272,10 +1316,29 @@ const MirageAPI = {
         p_grace: this.num(p.grace), p_gap: this.num(p.gap),
         p_max_shift: Number(p.max_shift) || 16,
         p_require_loc: p.require_location !== false,
+        p_outside: this.str(p.outside) || "block",
+        p_max_acc: this.num(p.max_acc),
+        p_max_speed: this.num(p.max_speed),
+        p_device_guard: p.device_guard !== false,
+        p_leave_outside: p.leave_outside !== false,
+        p_notify_flags: p.notify_flags !== false,
+        p_watch: Array.isArray(p.watch) ? p.watch : [],
         p_note: this.str(p.note) || null
       });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ سياسة الدوام");
       return { status: "success" };
+    },
+
+    /** التسجيلات الموسومة بالاشتباه والمحاولات المرفوضة */
+    attend_flags: async function (p) {
+      p = p || {};
+      var r = await SB.rpc("attend_flags", {
+        p_from: this.str(p.from) || null,
+        p_to: this.str(p.to) || null,
+        p_person: this.str(p.person) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّرت قراءة سجلّ الاشتباه");
+      return { status: "success", rows: r.data || [] };
     },
 
     /* ─────────── سجلّ الأعطال ─────────── */

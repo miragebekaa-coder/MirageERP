@@ -27,6 +27,7 @@
     <button class="tab active" data-tab="days">سجلّ الأيام</button>
     <button class="tab" data-tab="bal">أرصدة الإجازات</button>
     <button class="tab" data-tab="lv">الإجازات المسجَّلة</button>
+    <button class="tab" data-tab="fg">تسجيلات تحتاج مراجعة <span class="badge-pill" id="fgDot" style="display:none">0</span></button>
   </div>
 
   <div class="card">
@@ -101,12 +102,28 @@
     </div>
   </div>
 
+  <!-- ═══ الاشتباه ═══ -->
+  <div class="tab-panel" id="tab-fg">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>تسجيلات تحتاج مراجعة</h2>
+          <p>ما رُفض لأنه من خارج النطاق، وما سُجّل مع ملاحظة من الخادم</p></div>
+        <span class="badge-pill" id="cFg">—</span>
+      </div>
+      <div class="alert alert-info" style="margin:0 0 12px;text-align:right">
+        الوسم قرينة لا حكم. اسأل صاحب التسجيل قبل أن تبني عليه — فالدقّة الضعيفة
+        تحدث في المباني المغلقة، والجهاز الواحد قد يكون جهاز البوّابة.
+      </div>
+      <div id="fgBox"><div class="empty">اضغط «عرض».</div></div>
+    </div>
+  </div>
+
 </div>
 </div>
 </div>
 
 <script>
-var DAYS = [], LVS = [], ME = null;
+var DAYS = [], LVS = [], FLAGS = [], ME = null;
 
 Mirage.boot({ page: 'attendance', title: 'سجل الدوام', sub: 'الحضور والانصراف والإجازات والأرصدة' });
 ME = Mirage.session();
@@ -167,14 +184,54 @@ function loadAll() {
   Promise.all([
     Mirage.api('attend_days', a),
     Mirage.api('leave_balance', { person: a.person || '' }),
-    Mirage.api('leaves_list', { from: a.from, to: a.to, person: a.person })
+    Mirage.api('leaves_list', { from: a.from, to: a.to, person: a.person }),
+    Mirage.api('attend_flags', { from: a.from, to: a.to, person: a.person })
   ]).then(function (r) {
     Mirage.busy(btn, false);
     if (r[0].status === 'success') { DAYS = r[0].days || []; paintDays(); }
     else Mirage.fail(r[0]);
     if (r[1].status === 'success') paintBal(r[1].rows || [], a.person || ME.realName);
     if (r[2].status === 'success') { LVS = r[2].items || []; paintLv(); }
+    if (r[3].status === 'success') { FLAGS = r[3].rows || []; paintFlags(); }
   });
+}
+
+/** التسجيلات الموسومة والمحاولات المرفوضة — قرائن للمراجعة البشرية */
+function paintFlags() {
+  var dot = document.getElementById('fgDot');
+  document.getElementById('cFg').textContent = FLAGS.length + ' سجلاً';
+  dot.style.display = FLAGS.length ? '' : 'none';
+  dot.textContent = FLAGS.length;
+
+  var box = document.getElementById('fgBox');
+  if (!FLAGS.length) {
+    box.innerHTML = '<div class="empty"><span class="ico">🛡️</span><b>لا شيء يحتاج مراجعة</b>' +
+                    'كل التسجيلات في هذه المدة من داخل النطاق.</div>';
+    return;
+  }
+
+  box.innerHTML =
+    '<div class="table-wrap"><table><thead><tr>' +
+      '<th>الحالة</th><th>الموظف</th><th>الموقع</th><th>النوع</th><th>الوقت</th>' +
+      '<th>المسافة</th><th>الملاحظات</th>' +
+    '</tr></thead><tbody>' +
+    FLAGS.map(function (f) {
+      var bad = f.state === 'مرفوض';
+      return '<tr>' +
+        '<td><span class="pill" style="background:' + (bad ? '#FEE2E2' : '#FEF3C7') +
+          ';color:' + (bad ? '#991B1B' : '#92400E') + '">' + esc(f.state) + '</span></td>' +
+        '<td>' + esc(f.person) + '</td>' +
+        '<td>' + esc(f.site || '—') + '</td>' +
+        '<td>' + esc(f.kind || '—') + '</td>' +
+        '<td>' + Mirage.ltr(f.at || '') + '</td>' +
+        '<td>' + (f.distance == null ? '—' : Mirage.ltr(Math.round(f.distance) + ' م')) + '</td>' +
+        '<td style="line-height:1.9">' +
+          (f.flags || []).map(function (x) { return '• ' + esc(x); }).join('<br>') +
+          (f.reason ? '<div style="color:#991B1B;font-weight:800;margin-top:4px">' +
+                      esc(f.reason) + '</div>' : '') +
+        '</td></tr>';
+    }).join('') +
+    '</tbody></table></div>';
 }
 
 function paintDays() {

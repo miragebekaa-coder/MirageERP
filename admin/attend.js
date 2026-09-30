@@ -333,6 +333,20 @@ function ltDrop(i) {
 /* ─────────── سياسة الدوام ─────────── */
 
 function policyLoad() {
+  // admin.html قديم على الخادم بينما attend.js جديد — يُقال صراحةً لا صامتاً
+  if (!document.getElementById('wpOut')) {
+    var card = document.getElementById('wpSave');
+    if (card && card.parentNode) {
+      card.parentNode.insertAdjacentHTML('beforebegin',
+        '<div class="alert alert-warn" style="text-align:right">' +
+          '<b>ملف admin.html على الخادم قديم</b><br>' +
+          'حقول «ضبط النطاق وكشف التجاوز» موجودة في نسخة الترقية ٢٨. ' +
+          'ارفع admin.html الجديد فوق القديم ثم حدّث الصفحة بـ Ctrl+F5.' +
+        '</div>');
+    }
+    return;
+  }
+
   Mirage.api('work_policy', {}).then(function (res) {
     var p = (res && res.policy) || {};
     if (p.daily) document.getElementById('wpDaily').value = p.daily;
@@ -341,6 +355,13 @@ function policyLoad() {
     if (p.gap !== undefined) document.getElementById('wpGap').value = p.gap;
     if (p.max_shift) document.getElementById('wpMax').value = p.max_shift;
     document.getElementById('wpLoc').checked = p.require_location !== false;
+
+    document.getElementById('wpOut').value = p.outside || 'block';
+    if (p.max_acc !== undefined) document.getElementById('wpAcc').value = p.max_acc;
+    if (p.max_speed !== undefined) document.getElementById('wpSpeed').value = p.max_speed;
+    document.getElementById('wpDev').checked    = p.device_guard !== false;
+    document.getElementById('wpLvOut').checked  = p.leave_outside !== false;
+    document.getElementById('wpNotify').checked = p.notify_flags !== false;
   });
 }
 
@@ -353,7 +374,13 @@ function policySave() {
     grace: document.getElementById('wpGrace').value,
     gap: document.getElementById('wpGap').value,
     max_shift: document.getElementById('wpMax').value,
-    require_location: document.getElementById('wpLoc').checked
+    require_location: document.getElementById('wpLoc').checked,
+    outside: document.getElementById('wpOut').value,
+    max_acc: document.getElementById('wpAcc').value,
+    max_speed: document.getElementById('wpSpeed').value,
+    device_guard: document.getElementById('wpDev').checked,
+    leave_outside: document.getElementById('wpLvOut').checked,
+    notify_flags: document.getElementById('wpNotify').checked
   }).then(function (res) {
     Mirage.busy(btn, false);
     if (res.status !== 'success') return Mirage.fail(res);

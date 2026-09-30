@@ -106,6 +106,7 @@
         <div class="pr" id="siteProj"></div>
         <div class="ck-geo geo-wait" id="geoTag"><span>📍</span><span id="geoTxt">جارٍ تحديد موقعك…</span></div>
       </div>
+      <div id="farBox"></div>
       <div id="actions"></div>
       <div id="doneBox" style="margin-top:6px"></div>
       <div id="rescan" style="margin-top:14px"></div>
@@ -194,16 +195,55 @@ function dist(a, b, c, d) {
   return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y));
 }
 
+/** سياسة النطاق كما ضبطها مدير النظام: منع · تنبيه · سماح */
+function outMode() {
+  return ((SITE && SITE.policy && SITE.policy.outside_action) || 'block');
+}
+
 function paintGeo() {
-  if (!GEO) return;
+  if (!GEO) { setFar(false); return; }
   var m = SITE ? dist(SITE.lat, SITE.lng, GEO.lat, GEO.lng) : null;
+  var tol = Math.min(GEO.acc || 0, (SITE && SITE.policy && SITE.policy.max_accuracy_m) || 0);
+
   if (m === null) {
     geoTag('geo-ok', 'حُدّد موقعك (دقّة ' + Math.round(GEO.acc) + ' م)');
-  } else if (m <= SITE.radius) {
-    geoTag('geo-ok', 'داخل الموقع — ' + Math.round(m) + ' متراً');
-  } else {
-    geoTag('geo-far', 'خارج النطاق بـ ' + Math.round(m - SITE.radius) + ' متراً — سيُسجَّل ويُوسَم');
+    return setFar(false);
   }
+  if (m <= SITE.radius + tol) {
+    geoTag('geo-ok', 'داخل الموقع — ' + Math.round(m) + ' متراً');
+    return setFar(false);
+  }
+
+  var away = Math.round(m - SITE.radius);
+  if (outMode() === 'block') {
+    geoTag('geo-bad', 'خارج النطاق بـ ' + away + ' متراً — لن يُقبل التسجيل من هنا');
+    setFar(true);
+  } else if (outMode() === 'flag') {
+    geoTag('geo-far', 'خارج النطاق بـ ' + away + ' متراً — سيُسجَّل ويصل تنبيه لمسؤولك');
+    setFar(false);
+  } else {
+    geoTag('geo-far', 'خارج النطاق بـ ' + away + ' متراً');
+    setFar(false);
+  }
+}
+
+/** يعطّل الخيارات ما دام صاحبها خارج النطاق، ويشرح السبب بلا لبس */
+function setFar(on) {
+  var box = document.getElementById('actions');
+  var warn = document.getElementById('farBox');
+  if (!box || USED) return;
+  box.classList.toggle('ck-locked', !!on);
+  if (!warn) return;
+  warn.innerHTML = on
+    ? '<div class="alert alert-danger" style="margin:0 0 12px;text-align:right">' +
+        '<b>التسجيل من داخل الموقع وحده</b><br>' +
+        'اقترب من «' + esc(SITE.name) + '» ثم اضغط «تحديث موقعي». ' +
+        'كل محاولة من خارج النطاق تُحفَظ ويصل بها تنبيه إلى مسؤولك.' +
+        '<div style="margin-top:10px">' +
+          '<button class="btn btn-light" type="button" onclick="askGeo()" ' +
+            'style="width:100%">📍 تحديث موقعي</button></div>' +
+      '</div>'
+    : '';
 }
 
 
@@ -323,6 +363,16 @@ function paintActions() {
 
 /* ═══════════ التسجيل ═══════════ */
 
+/** ما وُسِم به التسجيل يُقال لصاحبه كما يُقال لمسؤوله — لا وسم في الخفاء */
+function flagBox(flags) {
+  if (!flags || !flags.length) return '';
+  return '<div class="alert alert-warn" style="margin:10px 0 0;text-align:right">' +
+    '<b>سُجّل مع ملاحظة</b><br>' +
+    flags.map(function (f) { return '• ' + esc(f); }).join('<br>') +
+    '<div style="font-size:12.5px;color:#92400E;margin-top:6px">' +
+      'وصل تنبيه بها إلى مسؤولك المباشر.</div></div>';
+}
+
 function doScan(kind) {
   var go = function () {
     Mirage.toast('جارٍ التسجيل…', 'info');
@@ -330,7 +380,10 @@ function doScan(kind) {
       code: CODE, kind: kind, token: TOKEN,
       lat: GEO ? GEO.lat : '', lng: GEO ? GEO.lng : '', acc: GEO ? GEO.acc : ''
     }).then(function (res) {
-      if (res.status !== 'success') return Mirage.fail(res);
+      if (res.status !== 'success') {
+        if (res.blocked) askGeo();       // مرفوض لبُعد المكان: أعد قياس الموقع فوراً
+        return Mirage.fail(res, res.blocked ? 'خارج نطاق الموقع' : undefined);
+      }
       SITE.open = (res.kind === 'حضور');
       document.getElementById('doneBox').innerHTML =
         '<div class="alert alert-success" style="margin:14px 0 0;text-align:right">' +
@@ -340,7 +393,7 @@ function doScan(kind) {
             ? ' · 📍 ' + Mirage.ltr(String(res.distance)) + ' متراً' +
               (res.inside === false ? ' <b>(خارج النطاق)</b>' : '') : '') +
           (res.hours ? '<br>⏱️ ساعات اليوم: ' + Mirage.ltr(res.hours.toFixed(2)) : '') +
-        '</div>';
+        '</div>' + flagBox(res.flags);
       lockAfter('سُجّل ' + res.kind);
       Mirage.ok('سُجّل ' + res.kind + ' في ' + res.site + ' — ' + Mirage.ltr(res.at), 'تم');
     });
@@ -397,15 +450,18 @@ function doLeave(kind) {
     if (!r.isConfirmed) return;
     Mirage.api('leave_new', {
       code: CODE, kind: kind, from: r.value.from, to: r.value.to, reason: r.value.reason,
-      lat: GEO ? GEO.lat : '', lng: GEO ? GEO.lng : ''
+      lat: GEO ? GEO.lat : '', lng: GEO ? GEO.lng : '', acc: GEO ? GEO.acc : ''
     }).then(function (res) {
-      if (res.status !== 'success') return Mirage.fail(res);
+      if (res.status !== 'success') {
+        if (res.blocked) askGeo();
+        return Mirage.fail(res, res.blocked ? 'خارج نطاق الموقع' : undefined);
+      }
       Mirage.ok('سُجّلت ' + res.kind + ' — ' + Mirage.ltr(String(res.days)) +
                 ' يوماً، بانتظار اعتماد مسؤولك.', 'تم');
       document.getElementById('doneBox').innerHTML =
         '<div class="alert alert-info" style="margin:14px 0 0;text-align:right">' +
         'سُجّلت <b>' + esc(res.kind) + '</b> — ' + Mirage.ltr(String(res.days)) +
-        ' يوماً، بانتظار الاعتماد.</div>';
+        ' يوماً، بانتظار الاعتماد.</div>' + flagBox(res.flags);
       lockAfter('سُجّلت ' + res.kind);
     });
   });
