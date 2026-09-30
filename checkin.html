@@ -42,13 +42,25 @@
   }
   .ck-btn:hover:not(:disabled) { box-shadow: var(--shadow-md); transform: translateY(-1px); }
   .ck-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .ck-btn .ic { font-size: 26px; line-height: 1; flex: 0 0 auto; width: 34px; text-align: center; }
+  .ck-btn .ic {
+    font-size: 22px; line-height: 1; flex: 0 0 auto;
+    width: 46px; height: 46px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--tint, #F1F5F9);
+  }
   .ck-btn .tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .ck-btn .t1 { font-size: 16px; font-weight: 900; color: var(--brand-dark); }
+  .ck-btn .t1 { font-size: 16px; font-weight: 900; color: var(--ink, var(--brand-dark)); }
   .ck-btn .t2 { font-size: 12.5px; color: var(--text-muted); font-weight: 700; }
+  /* شريط ملوّن على حافة كل خيار، بلون معناه */
+  .ck-btn { box-shadow: inset -5px 0 0 0 var(--accent, #CBD5E1), var(--shadow-sm); }
+  .ck-btn:hover:not(:disabled) {
+    box-shadow: inset -5px 0 0 0 var(--accent, #CBD5E1), var(--shadow-md);
+  }
   .ck-main { background: var(--brand-dark); }
-  .ck-main .t1, .ck-main .t2 { color: #fff; }
-  .ck-main .t2 { opacity: .78; }
+  .ck-main .t1 { color: #fff; }
+  .ck-main .t2 { color: #fff; opacity: .78; }
+  .ck-main .ic { background: rgba(255,255,255,.14); }
+  .ck-locked { opacity: .45; pointer-events: none; }
 
   #scanBox { position: relative; border-radius: var(--radius-md); overflow: hidden; background: #000; }
   #scanBox video { width: 100%; display: block; }
@@ -96,6 +108,7 @@
       </div>
       <div id="actions"></div>
       <div id="doneBox" style="margin-top:6px"></div>
+      <div id="rescan" style="margin-top:14px"></div>
       <p class="ck-note" style="margin-top:18px">
         يُسجَّل وقت المسح من الخادم لا من هاتفك، ويُسجَّل موقعك <b>لحظة المسح وحدها</b> —
         ولا يتتبّعك النظام بعدها.
@@ -116,6 +129,28 @@ var TOKEN = new URLSearchParams(location.search).get('t') || '';
 var SITE  = null;
 var GEO   = null;     /* {lat, lng, acc} */
 var STREAM = null;
+var USED  = false;    /* المسحة الواحدة تسجيل واحد */
+
+/* الرمز يُستهلك بأول تسجيل: من فتح الرابط مرة أخرى بلا مسح يُطالَب بالمسح.
+   يُحفظ في تخزين المتصفح فلا يلتفّ عليه بإعادة تحميل الصفحة. */
+var SPENT_KEY = 'mgScan:' + (Mirage.session().username || 'u');
+
+function spentAt(code) {
+  try {
+    var m = JSON.parse(localStorage.getItem(SPENT_KEY) || '{}');
+    return m[code] || 0;
+  } catch (e) { return 0; }
+}
+function markSpent(code) {
+  try {
+    var m = JSON.parse(localStorage.getItem(SPENT_KEY) || '{}');
+    m[code] = Date.now();
+    // لا نحتفظ إلا بآخر عشرة رموز
+    var ks = Object.keys(m).sort(function (a, b) { return m[b] - m[a]; }).slice(0, 10);
+    var out = {}; ks.forEach(function (k) { out[k] = m[k]; });
+    localStorage.setItem(SPENT_KEY, JSON.stringify(out));
+  } catch (e) {}
+}
 
 Mirage.boot({ page: 'checkin', title: 'تسجيل الدوام', sub: 'الحضور والانصراف والإجازات' });
 
@@ -184,36 +219,102 @@ function openSite() {
     document.getElementById('siteCard').style.display = '';
     document.getElementById('siteName').textContent = res.name;
     document.getElementById('siteProj').textContent = res.project || '';
+
+    // رمز سُجّل به قبل قليل: لا يُقبل مرتين بلا مسح جديد
+    var gap = ((res.policy && res.policy.min_gap_min) || 5) * 60000;
+    if (!TOKEN && Date.now() - spentAt(CODE) < gap) {
+      document.getElementById('actions').innerHTML =
+        '<div class="alert alert-warn" style="margin:0;text-align:right">' +
+          '<b>هذا الرمز استُعمل للتو</b><br>' +
+          'لكل تسجيل مسحة. امسح رمز الموقع من جديد لتسجيل آخر.' +
+        '</div>';
+      document.getElementById('rescan').innerHTML =
+        '<button class="btn btn-dark" type="button" onclick="location.href=\'checkin.html\'" ' +
+          'style="width:100%">📷 مسح رمز جديد</button>';
+      USED = true;
+      return;
+    }
+
     paintActions();
     askGeo();
   });
 }
 
+/* لكل خيار وجهه: أيقونة تدلّ على معناه ولون يميّزه عن جاره.
+   النوع الذي يضيفه مدير النظام يأخذ وجهه من كلمات اسمه. */
+function faceOf(name) {
+  var n = String(name || '');
+  if (/مرض|صحّ|صح|طبي/.test(n))          return { ic: '🩺', a: '#E11D48', t: '#FFF1F2', ink: '#9F1239' };
+  if (/سنوي|إجازة عادية/.test(n))         return { ic: '🏖️', a: '#0EA5E9', t: '#F0F9FF', ink: '#075985' };
+  if (/بلا راتب|بدون راتب|غير مدفوع/.test(n)) return { ic: '💸', a: '#64748B', t: '#F1F5F9', ink: '#334155' };
+  if (/مهمة|عمل خارج|تكليف/.test(n))      return { ic: '🚗', a: '#7C3AED', t: '#F5F3FF', ink: '#5B21B6' };
+  if (/أمومة|امومة|ولادة|وضع/.test(n))    return { ic: '👶', a: '#DB2777', t: '#FDF2F8', ink: '#9D174D' };
+  if (/حج|عمرة|ديني/.test(n))             return { ic: '🕌', a: '#059669', t: '#ECFDF5', ink: '#065F46' };
+  if (/زواج|عرس/.test(n))                 return { ic: '💍', a: '#D97706', t: '#FFFBEB', ink: '#92400E' };
+  if (/وفاة|عزاء|حداد/.test(n))           return { ic: '🕊️', a: '#475569', t: '#F1F5F9', ink: '#1E293B' };
+  if (/دراس|امتحان|تعليم/.test(n))        return { ic: '📚', a: '#2563EB', t: '#EFF6FF', ink: '#1D4ED8' };
+  if (/طارئ|اضطرار|ظرف/.test(n))          return { ic: '⚠️', a: '#F59E0B', t: '#FFFBEB', ink: '#92400E' };
+  return { ic: '📅', a: '#0891B2', t: '#ECFEFF', ink: '#155E75' };
+}
+
+function btnHtml(opts) {
+  return '<button class="ck-btn' + (opts.main ? ' ck-main' : '') + '" type="button" ' +
+         'style="--accent:' + opts.a + ';--tint:' + (opts.main ? 'transparent' : opts.t) +
+           ';--ink:' + (opts.ink || '#0F172A') + '" ' +
+         'onclick="' + opts.click + '">' +
+         '<span class="ic">' + opts.ic + '</span>' +
+         '<span class="tx"><span class="t1">' + opts.t1 + '</span>' +
+         '<span class="t2">' + opts.t2 + '</span></span></button>';
+}
+
+/** بعد أي تسجيل: تُقفَل الخيارات ويُطلب مسح جديد */
+function lockAfter(msg) {
+  USED = true;
+  markSpent(CODE);
+  var box = document.getElementById('actions');
+  box.classList.add('ck-locked');
+  document.getElementById('rescan').innerHTML =
+    '<div class="card" style="text-align:center;padding:20px 18px">' +
+      '<div style="font-size:30px;line-height:1">✅</div>' +
+      '<div style="font-size:15.5px;font-weight:900;color:#0F172A;margin-top:8px">' +
+        esc(msg) + '</div>' +
+      '<p style="font-size:13px;color:#64748B;line-height:1.9;margin:8px 0 14px">' +
+        'لكل تسجيل مسحة. امسح رمز الموقع من جديد لأي حضور أو انصراف أو إجازة أخرى.' +
+      '</p>' +
+      '<button class="btn btn-dark" type="button" onclick="location.href=\'checkin.html\'" ' +
+        'style="width:100%">📷 مسح رمز جديد</button>' +
+    '</div>';
+  document.getElementById('rescan').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function paintActions() {
+  if (USED) return;
   var next = SITE.open ? 'انصراف' : 'حضور';
-  var h =
-    '<button class="ck-btn ck-main" type="button" onclick="doScan(\'' + next + '\')">' +
-      '<span class="ic">' + (next === 'حضور' ? '🟢' : '🔴') + '</span>' +
-      '<span class="tx"><span class="t1">تسجيل ' + next + '</span>' +
-      '<span class="t2">' + (next === 'حضور'
-        ? 'بداية دوامك في هذا الموقع'
-        : 'لديك حضور مفتوح اليوم — هذا إنهاؤه') + '</span></span>' +
-    '</button>';
+  var h = btnHtml({
+    main: true, a: next === 'حضور' ? '#10B981' : '#EF4444',
+    ic: next === 'حضور' ? '🟢' : '🔴',
+    t1: 'تسجيل ' + next,
+    t2: next === 'حضور' ? 'بداية دوامك في هذا الموقع' : 'لديك حضور مفتوح اليوم — هذا إنهاؤه',
+    click: "doScan('" + next + "')"
+  });
 
   if (SITE.open) {
-    h += '<button class="ck-btn" type="button" onclick="doScan(\'حضور\')">' +
-         '<span class="ic">🟢</span><span class="tx"><span class="t1">تسجيل حضور جديد</span>' +
-         '<span class="t2">إن كان دوامك على فترتين</span></span></button>';
+    h += btnHtml({
+      a: '#10B981', t: '#ECFDF5', ink: '#065F46', ic: '🟢',
+      t1: 'تسجيل حضور جديد', t2: 'إن كان دوامك على فترتين',
+      click: "doScan('حضور')"
+    });
   }
 
   (SITE.leave_types || []).forEach(function (t) {
-    h += '<button class="ck-btn" type="button" onclick="doLeave(' +
-         JSON.stringify(t.name).replace(/"/g, '&quot;') + ')">' +
-         '<span class="ic">🌴</span><span class="tx">' +
-         '<span class="t1">تسجيل ' + esc(t.name) + '</span>' +
-         '<span class="t2">' + (t.quota > 0 ? 'الرصيد السنوي ' + Mirage.ltr(String(t.quota)) + ' يوماً'
-                                            : 'بلا سقف سنوي') +
-         (t.paid ? '' : ' · بلا راتب') + '</span></span></button>';
+    var f = faceOf(t.name);
+    h += btnHtml({
+      a: f.a, t: f.t, ink: f.ink, ic: f.ic,
+      t1: 'تسجيل ' + esc(t.name),
+      t2: (t.quota > 0 ? 'الرصيد السنوي ' + Mirage.ltr(String(t.quota)) + ' يوماً' : 'بلا سقف سنوي') +
+          (t.paid ? '' : ' · بلا راتب'),
+      click: 'doLeave(' + JSON.stringify(t.name).replace(/"/g, '&quot;') + ')'
+    });
   });
 
   document.getElementById('actions').innerHTML = h;
@@ -231,7 +332,6 @@ function doScan(kind) {
     }).then(function (res) {
       if (res.status !== 'success') return Mirage.fail(res);
       SITE.open = (res.kind === 'حضور');
-      paintActions();
       document.getElementById('doneBox').innerHTML =
         '<div class="alert alert-success" style="margin:14px 0 0;text-align:right">' +
           '<b>سُجّل ' + esc(res.kind) + '</b> — ' + esc(res.site) + '<br>' +
@@ -241,6 +341,7 @@ function doScan(kind) {
               (res.inside === false ? ' <b>(خارج النطاق)</b>' : '') : '') +
           (res.hours ? '<br>⏱️ ساعات اليوم: ' + Mirage.ltr(res.hours.toFixed(2)) : '') +
         '</div>';
+      lockAfter('سُجّل ' + res.kind);
       Mirage.ok('سُجّل ' + res.kind + ' في ' + res.site + ' — ' + Mirage.ltr(res.at), 'تم');
     });
   };
@@ -305,6 +406,7 @@ function doLeave(kind) {
         '<div class="alert alert-info" style="margin:14px 0 0;text-align:right">' +
         'سُجّلت <b>' + esc(res.kind) + '</b> — ' + Mirage.ltr(String(res.days)) +
         ' يوماً، بانتظار الاعتماد.</div>';
+      lockAfter('سُجّلت ' + res.kind);
     });
   });
 }
