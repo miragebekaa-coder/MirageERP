@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>سجل الدوام — ميراج</title>
+<link href="vendor/fonts.css" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="vendor/sweetalert2.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="tabs">
+    <button class="tab active" data-tab="days">سجلّ الأيام</button>
+    <button class="tab" data-tab="bal">أرصدة الإجازات</button>
+    <button class="tab" data-tab="lv">الإجازات المسجَّلة</button>
+  </div>
+
+  <div class="card">
+    <div class="grid-4 filters">
+      <div class="field">
+        <label for="fFrom">من تاريخ</label>
+        <input type="date" id="fFrom">
+      </div>
+      <div class="field">
+        <label for="fTo">إلى تاريخ</label>
+        <input type="date" id="fTo">
+      </div>
+      <div class="field">
+        <label for="fPerson">الموظف</label>
+        <select id="fPerson"><option value="">الجميع</option></select>
+      </div>
+      <div class="field">
+        <label for="fProject">المشروع</label>
+        <select id="fProject"><option value="all">كل المشاريع</option></select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-dark" type="button" id="goBtn" onclick="loadAll()">
+        <span class="btn-text">عرض</span><span class="spinner"></span>
+      </button>
+      <button class="btn btn-ghost" type="button" onclick="thisMonth()">هذا الشهر</button>
+      <button class="btn btn-ghost" type="button" onclick="lastMonth()">الشهر الماضي</button>
+      <button class="btn btn-ghost" type="button" id="xlBtn" onclick="exportDays()">
+        <span class="btn-text">تصدير إكسل</span><span class="spinner"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ سجلّ الأيام ═══ -->
+  <div class="tab-panel active" id="tab-days">
+    <div class="grid-4">
+      <div class="stat"><div class="label">أيام الدوام</div><div class="value" id="kDays">—</div></div>
+      <div class="stat is-success"><div class="label">مجموع الساعات</div><div class="value" id="kHours">—</div></div>
+      <div class="stat is-warn"><div class="label">أيام الإجازات</div><div class="value" id="kLeave">—</div></div>
+      <div class="stat is-danger"><div class="label">بلا انصراف</div><div class="value" id="kOpen">—</div>
+        <div class="foot">نسي الموظف تسجيل انصرافه</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>يوماً يوماً</h2><p>أول حضور وآخر انصراف والساعات المحتسَبة، والفترات المتقطّعة تُجمَع</p></div>
+        <span class="badge-pill" id="cDays">—</span>
+      </div>
+      <div id="daysBox"><div class="empty">اختر المدة واضغط «عرض».</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ الأرصدة ═══ -->
+  <div class="tab-panel" id="tab-bal">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>أرصدة الإجازات</h2><p>المسموح والمستهلك والمتبقي لهذه السنة</p></div>
+        <span class="badge-pill" id="balWho">—</span>
+      </div>
+      <div id="balBox"><div class="empty">اختر موظفاً واضغط «عرض» — وبلا اختيار يظهر رصيدك أنت.</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ الإجازات ═══ -->
+  <div class="tab-panel" id="tab-lv">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>الإجازات المسجَّلة</h2><p>الاعتماد والرفض من صلاحية المسؤول المباشر ومدير النظام</p></div>
+        <span class="badge-pill" id="cLv">—</span>
+      </div>
+      <div id="lvBox"><div class="empty">اضغط «عرض».</div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var DAYS = [], LVS = [], ME = null;
+
+Mirage.boot({ page: 'attendance', title: 'سجل الدوام', sub: 'الحضور والانصراف والإجازات والأرصدة' });
+ME = Mirage.session();
+
+document.querySelectorAll('.tab').forEach(function (t) {
+  t.onclick = function () {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function (x) { x.classList.remove('active'); });
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+  };
+});
+
+thisMonth();
+
+Mirage.lists().then(function (l) {
+  Mirage.fillSelect('fProject', (l.projects || []).map(function (p) {
+    return { value: p.name || p, text: p.name || p };
+  }), 'كل المشاريع', 'all');
+  Mirage.api('user_directory', {}).then(function (r) {
+    var names = (r.users || []).map(function (u) { return u.name || u.real_name || u; })
+      .filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort();
+    Mirage.fillSelect('fPerson', names.map(function (n) { return { value: n, text: n }; }), 'الجميع', '');
+  });
+  loadAll();
+});
+
+function thisMonth() {
+  var d = new Date();
+  document.getElementById('fFrom').value = new Date(d.getFullYear(), d.getMonth(), 1)
+    .toISOString().slice(0, 10);
+  document.getElementById('fTo').value = Mirage.today();
+  if (DAYS.length) loadAll();
+}
+function lastMonth() {
+  var d = new Date();
+  document.getElementById('fFrom').value = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+    .toISOString().slice(0, 10);
+  document.getElementById('fTo').value = new Date(d.getFullYear(), d.getMonth(), 0)
+    .toISOString().slice(0, 10);
+  loadAll();
+}
+
+function args() {
+  return {
+    from: document.getElementById('fFrom').value,
+    to: document.getElementById('fTo').value,
+    person: document.getElementById('fPerson').value,
+    project: document.getElementById('fProject').value
+  };
+}
+
+function loadAll() {
+  var btn = document.getElementById('goBtn');
+  Mirage.busy(btn, true);
+  var a = args();
+
+  Promise.all([
+    Mirage.api('attend_days', a),
+    Mirage.api('leave_balance', { person: a.person || '' }),
+    Mirage.api('leaves_list', { from: a.from, to: a.to, person: a.person })
+  ]).then(function (r) {
+    Mirage.busy(btn, false);
+    if (r[0].status === 'success') { DAYS = r[0].days || []; paintDays(); }
+    else Mirage.fail(r[0]);
+    if (r[1].status === 'success') paintBal(r[1].rows || [], a.person || ME.realName);
+    if (r[2].status === 'success') { LVS = r[2].items || []; paintLv(); }
+  });
+}
+
+function paintDays() {
+  var work = DAYS.filter(function (d) { return d.state === 'دوام' || d.state === 'بلا انصراف'; });
+  var hrs = DAYS.reduce(function (s, d) { return s + d.hours; }, 0);
+  var lv  = DAYS.filter(function (d) { return d.leave; }).length;
+  var op  = DAYS.filter(function (d) { return d.state === 'بلا انصراف'; }).length;
+
+  document.getElementById('kDays').textContent  = work.length;
+  document.getElementById('kHours').textContent = hrs.toFixed(1);
+  document.getElementById('kLeave').textContent = lv;
+  document.getElementById('kOpen').textContent  = op;
+  document.getElementById('cDays').textContent  = DAYS.length + ' يوماً';
+
+  var box = document.getElementById('daysBox');
+  if (!DAYS.length) {
+    box.innerHTML = '<div class="empty"><span class="ico">🗓️</span><b>لا سجلات في هذه المدة</b>' +
+                    'غيّر التواريخ أو الموظف.</div>';
+    return;
+  }
+
+  box.innerHTML =
+    '<div class="table-wrap"><table><thead><tr>' +
+    '<th>الموظف</th><th>اليوم</th><th>حضور</th><th>انصراف</th><th>الساعات</th>' +
+    '<th>الموقع</th><th>الحالة</th></tr></thead><tbody>' +
+    DAYS.map(function (d) {
+      var tag = d.leave ? '<span class="tag tag-blue">' + esc(d.state) + '</span>'
+              : d.state === 'بلا انصراف' ? '<span class="tag tag-red">بلا انصراف</span>'
+              : d.state === 'غياب' ? '<span class="tag tag-gray">غياب</span>'
+              : '<span class="tag tag-green">دوام</span>';
+      var far = (d.inside === false)
+        ? ' <span class="tag tag-red" title="سُجّل من خارج نطاق الموقع">خارج النطاق</span>' : '';
+      return '<tr><td>' + esc(d.person) + '</td>' +
+        '<td style="white-space:nowrap">' + Mirage.ltr(d.day) + '</td>' +
+        '<td>' + Mirage.ltr(d.in || '—') + '</td>' +
+        '<td>' + Mirage.ltr(d.out || '—') + '</td>' +
+        '<td><b>' + (d.hours ? Mirage.ltr(d.hours.toFixed(2)) : '—') + '</b></td>' +
+        '<td>' + esc(d.site || '—') + far + '</td>' +
+        '<td>' + tag + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function paintBal(rows, who) {
+  document.getElementById('balWho').textContent = who || '—';
+  var box = document.getElementById('balBox');
+  if (!rows.length) { box.innerHTML = '<div class="empty">لا أنواع إجازات مسجَّلة.</div>'; return; }
+
+  box.innerHTML = '<div class="grid-3">' + rows.map(function (r) {
+    var pct = r.quota > 0 ? Math.min(100, Math.round(r.used / r.quota * 100)) : 0;
+    var tone = r.quota === 0 ? '' : (r.remaining <= 0 ? ' is-danger'
+              : r.remaining <= r.quota * 0.25 ? ' is-warn' : ' is-success');
+    return '<div class="stat' + tone + '">' +
+      '<div class="label">' + esc(r.kind) + (r.paid ? '' : ' · بلا راتب') + '</div>' +
+      '<div class="value">' + (r.quota > 0 ? Mirage.ltr(String(r.remaining)) : '∞') + '</div>' +
+      '<div class="foot">' +
+        (r.quota > 0
+          ? 'المتبقي من ' + Mirage.ltr(String(r.quota)) + ' يوماً · استُهلك ' + Mirage.ltr(String(r.used))
+          : 'بلا سقف · استُهلك ' + Mirage.ltr(String(r.used)) + ' يوماً') +
+      '</div>' +
+      (r.quota > 0
+        ? '<div style="height:6px;background:#E2E8F0;border-radius:999px;margin-top:10px;overflow:hidden">' +
+          '<div style="height:100%;width:' + pct + '%;background:' +
+          (pct >= 100 ? '#EF4444' : pct >= 75 ? '#F59E0B' : '#10B981') + '"></div></div>'
+        : '') +
+      '</div>';
+  }).join('') + '</div>';
+}
+
+function paintLv() {
+  document.getElementById('cLv').textContent = LVS.length + ' إجازة';
+  var box = document.getElementById('lvBox');
+  if (!LVS.length) {
+    box.innerHTML = '<div class="empty"><span class="ico">🌴</span><b>لا إجازات في هذه المدة</b></div>';
+    return;
+  }
+  var can = Mirage.isAdmin() || ME.accessLevel >= 1;
+
+  box.innerHTML =
+    '<div class="table-wrap"><table><thead><tr>' +
+    '<th>الموظف</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th>' +
+    '<th>السبب</th><th>الحالة</th>' + (can ? '<th></th>' : '') + '</tr></thead><tbody>' +
+    LVS.map(function (l, i) {
+      var tag = l.state === 'معتمدة' ? '<span class="tag tag-green">معتمدة</span>'
+              : l.state === 'مرفوضة' ? '<span class="tag tag-red">مرفوضة</span>'
+              : '<span class="tag tag-yellow">بانتظار الاعتماد</span>';
+      var act = '';
+      if (can && l.state === 'مسجّلة' && l.person !== ME.realName) {
+        act = '<td style="white-space:nowrap">' +
+              '<button class="btn btn-primary btn-sm" onclick="decide(' + i + ',true)">اعتماد</button> ' +
+              '<button class="btn btn-danger btn-sm" onclick="decide(' + i + ',false)">رفض</button></td>';
+      } else if (can) {
+        act = '<td>' + (l.by ? '<span class="hint">' + esc(l.by) + '</span>' : '') + '</td>';
+      }
+      return '<tr><td>' + esc(l.person) + '</td><td>' + esc(l.kind) + '</td>' +
+        '<td style="white-space:nowrap">' + Mirage.ltr(l.from) + '</td>' +
+        '<td style="white-space:nowrap">' + Mirage.ltr(l.to) + '</td>' +
+        '<td><b>' + Mirage.ltr(String(l.days)) + '</b></td>' +
+        '<td>' + esc((l.reason || '—').slice(0, 60)) + '</td>' +
+        '<td>' + tag + '</td>' + act + '</tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+function decide(i, ok) {
+  var l = LVS[i]; if (!l) return;
+  Swal.fire({
+    icon: ok ? 'question' : 'warning',
+    title: (ok ? 'اعتماد' : 'رفض') + ' إجازة ' + esc(l.person),
+    html: '<div style="text-align:right;direction:rtl;font-size:14px;line-height:1.9">' +
+          esc(l.kind) + ' من ' + Mirage.ltr(l.from) + ' إلى ' + Mirage.ltr(l.to) +
+          ' (' + Mirage.ltr(String(l.days)) + ' يوماً)' +
+          (l.reason ? '<br><span style="color:#64748B">' + esc(l.reason) + '</span>' : '') + '</div>',
+    input: 'text',
+    inputPlaceholder: ok ? 'ملاحظة (اختياري)' : 'سبب الرفض',
+    showCancelButton: true,
+    confirmButtonText: ok ? 'اعتماد' : 'رفض',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: ok ? '#2563EB' : '#DC2626', cancelButtonColor: '#64748B'
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    if (!ok && !String(r.value || '').trim()) {
+      return Mirage.fail({ message: 'اكتب سبب الرفض — يصل إلى الموظف' });
+    }
+    Mirage.api('leave_decide', { id: l.id, ok: ok, note: r.value }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.toast(ok ? 'اعتُمدت الإجازة' : 'رُفضت الإجازة');
+      loadAll();
+    });
+  });
+}
+
+function exportDays() {
+  if (!DAYS.length) return Mirage.note('لا بيانات لتصديرها — اضغط «عرض» أولاً.');
+  var btn = document.getElementById('xlBtn');
+  Mirage.busy(btn, true);
+
+  var rows = DAYS.map(function (d) {
+    return {
+      'الموظف': d.person, 'اليوم': d.day, 'حضور': d.in, 'انصراف': d.out,
+      'الساعات': d.hours, 'الموقع': d.site,
+      'داخل النطاق': d.inside === false ? 'لا' : (d.inside === true ? 'نعم' : ''),
+      'الحالة': d.state
+    };
+  });
+  var bal = LVS.map(function (l) {
+    return {
+      'الموظف': l.person, 'النوع': l.kind, 'من': l.from, 'إلى': l.to,
+      'الأيام': l.days, 'السبب': l.reason, 'الحالة': l.state, 'قرّرها': l.by
+    };
+  });
+
+  Mirage.saveXlsx([
+    { name: 'سجل الدوام', rows: rows },
+    { name: 'الإجازات', rows: bal }
+  ], 'سجل-الدوام-' + args().from + '_' + args().to + '.xlsx').then(function () {
+    Mirage.busy(btn, false);
+    Mirage.toast('نُزِّل الملف');
+  }).catch(function (e) {
+    Mirage.busy(btn, false);
+    Mirage.fail({ message: 'تعذّر التصدير', raw: String(e) });
+  });
+}
+</script>
+</body>
+</html>

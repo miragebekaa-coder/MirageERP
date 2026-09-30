@@ -16,6 +16,8 @@ const MIRAGE_PAGES = [
   { key: "my_tasks",            file: "my_tasks.html",            label: "مهامي",               ico: "✅", group: "النماذج اليومية", tone: "followup", open: true },
   { key: "followups",           file: "followups.html",           label: "تكليف مهمة ومتابعة", ico: "📋", group: "النماذج اليومية", tone: "followup" },
   { key: "form_violation",      file: "form_violation.html",      label: "تقديم بلاغ مخالفة",  ico: "📝", group: "النماذج اليومية" },
+  { key: "checkin",             file: "checkin.html",             label: "تسجيل الدوام",        ico: "⏱️", group: "الدوام والإجازات", open: true },
+  { key: "attendance",          file: "attendance.html",          label: "سجل الدوام",          ico: "🗓️", group: "الدوام والإجازات", open: true },
   { key: "notifications",       file: "notifications.html",       label: "الإشعارات",           ico: "🔔", group: "التواصل", open: true },
   { key: "my_files",            file: "my_files.html",            label: "ملفاتي",              ico: "🗂️", group: "التواصل", open: true },
   { key: "suggestions",         file: "suggestions.html",         label: "اقتراحات تحسينية",    ico: "💡", group: "التواصل", open: true },
@@ -103,7 +105,20 @@ const Mirage = {
         detail: "تأكّد أن mirage-api.js مُستدعى في الصفحة قبل app.js."
       });
     }
-    return MirageAPI.call(action, data);
+    var self = this;
+    return MirageAPI.call(action, data).then(function (res) {
+      // جدول تجاوز سقف العرض: يُقال صراحةً، فلا يظنّ المستخدم أنه يرى كل شيء
+      if (res && res.truncated && !self._capSaid) {
+        self._capSaid = true;
+        setTimeout(function () {
+          Mirage.note(
+            "السجلات أكثر من أن تُعرض دفعة واحدة: ظهر " + Mirage.ltr(String(res.shown)) +
+            " من " + Mirage.ltr(String(res.total)) + ". ضيّق الفلتر (المشروع أو الشهر أو الحالة) " +
+            "لترى ما تريد كاملاً.", "عرض جزئي");
+        }, 900);
+      }
+      return res;
+    });
   },
 
   /**
@@ -1238,7 +1253,7 @@ const Mirage = {
     if (this._xlsxP) return this._xlsxP;
     this._xlsxP = new Promise(function (ok, no) {
       var s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+      s.src = "vendor/xlsx.js";
       s.onload = function () {
         window.XLSX ? ok(window.XLSX) : no(new Error("تعذّر تحميل مكتبة إكسل"));
       };
@@ -1369,15 +1384,41 @@ const Mirage = {
       'onclick="this.parentNode.remove()">إخفاء</button>';
   }
 
+  /* ─────────── تسجيل العطل في قاعدة البيانات ───────────
+     العطل الذي يقع عند موظف في محطة لا يصل إليك إن لم يُسجَّل.
+     يُرسَل بهدوء بلا إزعاج للمستخدم، ولا يراه إلا مدير النظام. */
+
+  var sent = {};
+  function record(kind, message, detail) {
+    var msg = String(message || "").slice(0, 500);
+    if (!msg || sent[msg]) return;                       // مرة واحدة لكل عطل في الصفحة
+    sent[msg] = 1;
+    try {
+      if (typeof MirageAPI === "undefined" || !localStorage.getItem("userName")) return;
+      MirageAPI.call("log_error", {
+        message: msg, kind: kind,
+        page: (location.pathname.split("/").pop() || "index.html"),
+        detail: String(detail || "").slice(0, 4000),
+        agent: navigator.userAgent
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
   window.addEventListener("error", function (e) {
     var where = e.filename ? (" — " + String(e.filename).split("/").pop() + ":" + e.lineno) : "";
     banner((e.message || "خطأ غير معروف") + where);
+    record("js", (e.message || "خطأ غير معروف") + where,
+           (e.error && e.error.stack) || "");
   });
 
   window.addEventListener("unhandledrejection", function (e) {
     var m = (e.reason && (e.reason.message || e.reason)) || "طلب فشل بلا معالجة";
     banner(String(m));
+    record("promise", String(m), (e.reason && e.reason.stack) || "");
   });
+
+  // يُستدعى من طبقة الاتصال حين يرفض الخادم طلباً
+  Mirage.recordError = function (message, detail) { record("api", message, detail); };
 })();
 
 /** تهريب النصوص قبل إدراجها في HTML */

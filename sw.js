@@ -6,10 +6,16 @@
    والنسخة المحفوظة تُستخدم فقط حين لا يوجد اتصال.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE = "mirage-v3";
+const CACHE = "mirage-v4";
 const SHELL = [
   "index.html", "app.css", "app.js", "mirage-api.js", "config.js", "mirage.png",
-  "icon-192.png", "badge-96.png", "manifest.webmanifest"
+  "icon-192.png", "badge-96.png", "manifest.webmanifest",
+  // المكتبات والخط صارت داخل الموقع، فتُحفَظ معه ويعمل النظام بلا إنترنت
+  "vendor/sweetalert2.js", "vendor/supabase.js", "vendor/fonts.css",
+  "vendor/fonts/tajawal-arabic-400-normal.woff2",
+  "vendor/fonts/tajawal-arabic-500-normal.woff2",
+  "vendor/fonts/tajawal-arabic-700-normal.woff2",
+  "vendor/fonts/tajawal-arabic-900-normal.woff2"
 ];
 
 self.addEventListener("install", (e) => {

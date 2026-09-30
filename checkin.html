@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>تسجيل الدوام — ميراج</title>
+<link href="vendor/fonts.css" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="vendor/sweetalert2.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+<style>
+  .ck-wrap { max-width: 520px; margin: 0 auto; }
+  .ck-site {
+    text-align: center; padding: 22px 18px;
+    border-radius: var(--radius-md); background: var(--surface);
+    border: 1px solid var(--border-light); box-shadow: var(--shadow-sm);
+  }
+  .ck-site .nm { font-size: 20px; font-weight: 900; color: var(--brand-dark); }
+  .ck-site .pr { font-size: 13px; color: var(--text-muted); font-weight: 700; margin-top: 3px; }
+  .ck-geo {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 14px;
+    padding: 7px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 800;
+  }
+  .geo-ok   { background: #ECFDF5; color: #047857; }
+  .geo-far  { background: #FFFBEB; color: #92400E; }
+  .geo-wait { background: var(--surface-alt); color: var(--text-muted); }
+  .geo-bad  { background: #FEF2F2; color: #B91C1C; }
+
+  .ck-btn {
+    display: flex; align-items: center; gap: 14px; width: 100%;
+    padding: 18px 18px; border-radius: var(--radius-md); cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-sm); font-family: inherit; text-align: right;
+    margin-bottom: 12px; transition: box-shadow .15s ease, transform .15s ease;
+  }
+  .ck-btn:hover:not(:disabled) { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .ck-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .ck-btn .ic { font-size: 26px; line-height: 1; flex: 0 0 auto; width: 34px; text-align: center; }
+  .ck-btn .tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .ck-btn .t1 { font-size: 16px; font-weight: 900; color: var(--brand-dark); }
+  .ck-btn .t2 { font-size: 12.5px; color: var(--text-muted); font-weight: 700; }
+  .ck-main { background: var(--brand-dark); }
+  .ck-main .t1, .ck-main .t2 { color: #fff; }
+  .ck-main .t2 { opacity: .78; }
+
+  #scanBox { position: relative; border-radius: var(--radius-md); overflow: hidden; background: #000; }
+  #scanBox video { width: 100%; display: block; }
+  #scanBox .frame {
+    position: absolute; inset: 14% 14%; border: 3px solid rgba(255,255,255,.9);
+    border-radius: 18px; box-shadow: 0 0 0 2000px rgba(0,0,0,.35);
+  }
+  .ck-note { font-size: 12.5px; color: var(--text-muted); line-height: 1.9; text-align: center; }
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content narrow">
+
+  <div class="ck-wrap">
+
+    <!-- لا رمز في الرابط: يُفتح القارئ -->
+    <div id="scanCard" style="display:none">
+      <div class="card">
+        <div class="card-head">
+          <div><h2>امسح رمز الموقع</h2><p>وجّه الكاميرا إلى الرمز المعلَّق أو المعروض على الشاشة</p></div>
+        </div>
+        <div id="scanBox"><video id="cam" playsinline muted></video><div class="frame"></div></div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn btn-dark" type="button" id="camBtn" onclick="startCam()">
+            <span class="btn-text">تشغيل الكاميرا</span><span class="spinner"></span>
+          </button>
+          <button class="btn btn-ghost" type="button" onclick="askCode()">إدخال الرمز يدوياً</button>
+        </div>
+        <p class="ck-note" style="margin-top:14px">
+          إن لم تعمل الكاميرا هنا، افتح كاميرا هاتفك العادية ووجّهها إلى الرمز — تفتح الصفحة نفسها.
+        </p>
+      </div>
+    </div>
+
+    <!-- الرمز موجود: الموقع والخيارات -->
+    <div id="siteCard" style="display:none">
+      <div class="ck-site" style="margin-bottom:18px">
+        <div class="nm" id="siteName">—</div>
+        <div class="pr" id="siteProj"></div>
+        <div class="ck-geo geo-wait" id="geoTag"><span>📍</span><span id="geoTxt">جارٍ تحديد موقعك…</span></div>
+      </div>
+      <div id="actions"></div>
+      <div id="doneBox" style="margin-top:6px"></div>
+      <p class="ck-note" style="margin-top:18px">
+        يُسجَّل وقت المسح من الخادم لا من هاتفك، ويُسجَّل موقعك <b>لحظة المسح وحدها</b> —
+        ولا يتتبّعك النظام بعدها.
+      </p>
+    </div>
+
+    <div id="loadBox" class="empty"><span class="ico">⏱️</span><b>جارٍ التحضير…</b></div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script src="vendor/jsqr.js"></script>
+<script>
+var CODE  = new URLSearchParams(location.search).get('s') || '';
+var TOKEN = new URLSearchParams(location.search).get('t') || '';
+var SITE  = null;
+var GEO   = null;     /* {lat, lng, acc} */
+var STREAM = null;
+
+Mirage.boot({ page: 'checkin', title: 'تسجيل الدوام', sub: 'الحضور والانصراف والإجازات' });
+
+if (CODE) { openSite(); } else { showScanner(); }
+
+
+/* ═══════════ الموقع الجغرافي ═══════════ */
+
+function geoTag(cls, text) {
+  var t = document.getElementById('geoTag');
+  if (!t) return;
+  t.className = 'ck-geo ' + cls;
+  document.getElementById('geoTxt').textContent = text;
+}
+
+function askGeo() {
+  return new Promise(function (ok) {
+    if (!navigator.geolocation) {
+      geoTag('geo-bad', 'هذا المتصفح لا يدعم تحديد الموقع');
+      return ok(null);
+    }
+    geoTag('geo-wait', 'جارٍ تحديد موقعك…');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      GEO = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+      paintGeo();
+      ok(GEO);
+    }, function (e) {
+      GEO = null;
+      geoTag('geo-bad', e.code === 1
+        ? 'لم تسمح بالوصول إلى موقعك — لا يُسجَّل الدوام بلا موقع'
+        : 'تعذّر تحديد موقعك. اخرج إلى مكان مكشوف وأعد المحاولة');
+      ok(null);
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+}
+
+function dist(a, b, c, d) {
+  if (a == null || b == null || c == null || d == null) return null;
+  var R = 6371000, r = Math.PI / 180;
+  var x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2);
+  return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y));
+}
+
+function paintGeo() {
+  if (!GEO) return;
+  var m = SITE ? dist(SITE.lat, SITE.lng, GEO.lat, GEO.lng) : null;
+  if (m === null) {
+    geoTag('geo-ok', 'حُدّد موقعك (دقّة ' + Math.round(GEO.acc) + ' م)');
+  } else if (m <= SITE.radius) {
+    geoTag('geo-ok', 'داخل الموقع — ' + Math.round(m) + ' متراً');
+  } else {
+    geoTag('geo-far', 'خارج النطاق بـ ' + Math.round(m - SITE.radius) + ' متراً — سيُسجَّل ويُوسَم');
+  }
+}
+
+
+/* ═══════════ فتح الموقع وخياراته ═══════════ */
+
+function openSite() {
+  Mirage.api('attend_site', { code: CODE }).then(function (res) {
+    document.getElementById('loadBox').style.display = 'none';
+    if (res.status !== 'success') {
+      return Mirage.fail(res).then(function () { showScanner(); });
+    }
+    SITE = res;
+    document.getElementById('siteCard').style.display = '';
+    document.getElementById('siteName').textContent = res.name;
+    document.getElementById('siteProj').textContent = res.project || '';
+    paintActions();
+    askGeo();
+  });
+}
+
+function paintActions() {
+  var next = SITE.open ? 'انصراف' : 'حضور';
+  var h =
+    '<button class="ck-btn ck-main" type="button" onclick="doScan(\'' + next + '\')">' +
+      '<span class="ic">' + (next === 'حضور' ? '🟢' : '🔴') + '</span>' +
+      '<span class="tx"><span class="t1">تسجيل ' + next + '</span>' +
+      '<span class="t2">' + (next === 'حضور'
+        ? 'بداية دوامك في هذا الموقع'
+        : 'لديك حضور مفتوح اليوم — هذا إنهاؤه') + '</span></span>' +
+    '</button>';
+
+  if (SITE.open) {
+    h += '<button class="ck-btn" type="button" onclick="doScan(\'حضور\')">' +
+         '<span class="ic">🟢</span><span class="tx"><span class="t1">تسجيل حضور جديد</span>' +
+         '<span class="t2">إن كان دوامك على فترتين</span></span></button>';
+  }
+
+  (SITE.leave_types || []).forEach(function (t) {
+    h += '<button class="ck-btn" type="button" onclick="doLeave(' +
+         JSON.stringify(t.name).replace(/"/g, '&quot;') + ')">' +
+         '<span class="ic">🌴</span><span class="tx">' +
+         '<span class="t1">تسجيل ' + esc(t.name) + '</span>' +
+         '<span class="t2">' + (t.quota > 0 ? 'الرصيد السنوي ' + Mirage.ltr(String(t.quota)) + ' يوماً'
+                                            : 'بلا سقف سنوي') +
+         (t.paid ? '' : ' · بلا راتب') + '</span></span></button>';
+  });
+
+  document.getElementById('actions').innerHTML = h;
+}
+
+
+/* ═══════════ التسجيل ═══════════ */
+
+function doScan(kind) {
+  var go = function () {
+    Mirage.toast('جارٍ التسجيل…', 'info');
+    Mirage.api('attend_scan', {
+      code: CODE, kind: kind, token: TOKEN,
+      lat: GEO ? GEO.lat : '', lng: GEO ? GEO.lng : '', acc: GEO ? GEO.acc : ''
+    }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      SITE.open = (res.kind === 'حضور');
+      paintActions();
+      document.getElementById('doneBox').innerHTML =
+        '<div class="alert alert-success" style="margin:14px 0 0;text-align:right">' +
+          '<b>سُجّل ' + esc(res.kind) + '</b> — ' + esc(res.site) + '<br>' +
+          '🕒 ' + Mirage.ltr(res.at) +
+          (res.distance || res.distance === 0
+            ? ' · 📍 ' + Mirage.ltr(String(res.distance)) + ' متراً' +
+              (res.inside === false ? ' <b>(خارج النطاق)</b>' : '') : '') +
+          (res.hours ? '<br>⏱️ ساعات اليوم: ' + Mirage.ltr(res.hours.toFixed(2)) : '') +
+        '</div>';
+      Mirage.ok('سُجّل ' + res.kind + ' في ' + res.site + ' — ' + Mirage.ltr(res.at), 'تم');
+    });
+  };
+
+  if (!GEO) {
+    return askGeo().then(function (g) {
+      if (!g) {
+        return Mirage.confirm(
+          'لم يصل موقعك. إن تابعت فقد يرفض النظام التسجيل بحسب سياسة شركتك.',
+          'بلا موقع').then(function (y) { if (y) go(); });
+      }
+      go();
+    });
+  }
+  go();
+}
+
+function doLeave(kind) {
+  var t = (SITE.leave_types || []).filter(function (x) { return x.name === kind; })[0] || {};
+  var today = Mirage.today();
+
+  Swal.fire({
+    title: 'تسجيل ' + kind,
+    html:
+      '<div style="text-align:right;direction:rtl">' +
+        '<label style="font-size:13px;font-weight:800;display:block;margin-bottom:4px">من تاريخ</label>' +
+        '<input type="date" id="lvFrom" class="swal2-input" style="margin:0 0 12px;width:100%" value="' + today + '">' +
+        '<label style="font-size:13px;font-weight:800;display:block;margin-bottom:4px">إلى تاريخ</label>' +
+        '<input type="date" id="lvTo" class="swal2-input" style="margin:0 0 12px;width:100%" value="' + today + '">' +
+        '<label style="font-size:13px;font-weight:800;display:block;margin-bottom:4px">السبب' +
+          (t.needs_note ? ' <span style="color:#DC2626">*</span>' : ' (اختياري)') + '</label>' +
+        '<textarea id="lvWhy" class="swal2-textarea" style="margin:0;width:100%" rows="2"></textarea>' +
+        '<p style="font-size:12.5px;color:#64748B;line-height:1.8;margin:10px 0 0">' +
+          'تُرسَل إلى مسؤولك المباشر لاعتمادها، وتُخصم من رصيدك حال تسجيلها.' +
+        '</p>' +
+      '</div>',
+    width: 480,
+    showCancelButton: true,
+    confirmButtonText: 'تسجيل الإجازة',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#2563EB', cancelButtonColor: '#64748B',
+    focusConfirm: false,
+    preConfirm: function () {
+      var f = document.getElementById('lvFrom').value;
+      var o = document.getElementById('lvTo').value;
+      var w = document.getElementById('lvWhy').value.trim();
+      if (!f || !o) { Swal.showValidationMessage('حدّد التاريخين'); return false; }
+      if (o < f) { Swal.showValidationMessage('تاريخ النهاية قبل البداية'); return false; }
+      if (t.needs_note && !w) { Swal.showValidationMessage('السبب مطلوب لهذا النوع'); return false; }
+      return { from: f, to: o, reason: w };
+    }
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    Mirage.api('leave_new', {
+      code: CODE, kind: kind, from: r.value.from, to: r.value.to, reason: r.value.reason,
+      lat: GEO ? GEO.lat : '', lng: GEO ? GEO.lng : ''
+    }).then(function (res) {
+      if (res.status !== 'success') return Mirage.fail(res);
+      Mirage.ok('سُجّلت ' + res.kind + ' — ' + Mirage.ltr(String(res.days)) +
+                ' يوماً، بانتظار اعتماد مسؤولك.', 'تم');
+      document.getElementById('doneBox').innerHTML =
+        '<div class="alert alert-info" style="margin:14px 0 0;text-align:right">' +
+        'سُجّلت <b>' + esc(res.kind) + '</b> — ' + Mirage.ltr(String(res.days)) +
+        ' يوماً، بانتظار الاعتماد.</div>';
+    });
+  });
+}
+
+
+/* ═══════════ قارئ الرموز ═══════════ */
+
+function showScanner() {
+  document.getElementById('loadBox').style.display = 'none';
+  document.getElementById('siteCard').style.display = 'none';
+  document.getElementById('scanCard').style.display = '';
+}
+
+function startCam() {
+  var btn = document.getElementById('camBtn');
+  Mirage.busy(btn, true);
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function (st) {
+      Mirage.busy(btn, false);
+      STREAM = st;
+      var v = document.getElementById('cam');
+      v.srcObject = st; v.play();
+      btn.style.display = 'none';
+      tick();
+    })
+    .catch(function () {
+      Mirage.busy(btn, false);
+      Mirage.note('لم تُفتح الكاميرا. استعمل كاميرا هاتفك العادية ووجّهها إلى الرمز، ' +
+                  'أو أدخل الرمز يدوياً.', 'تعذّر فتح الكاميرا');
+    });
+}
+
+function tick() {
+  var v = document.getElementById('cam');
+  if (!STREAM || !v.videoWidth) { return requestAnimationFrame(tick); }
+  var c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  var x = c.getContext('2d');
+  x.drawImage(v, 0, 0, c.width, c.height);
+  var img = x.getImageData(0, 0, c.width, c.height);
+  var found = null;
+  try { found = window.jsQR ? jsQR(img.data, img.width, img.height) : null; } catch (e) {}
+  if (found && found.data) { return gotCode(found.data); }
+  requestAnimationFrame(tick);
+}
+
+function gotCode(text) {
+  stopCam();
+  var s = '', t = '';
+  try {
+    var u = new URL(text, location.href);
+    s = u.searchParams.get('s') || '';
+    t = u.searchParams.get('t') || '';
+  } catch (e) {}
+  if (!s) { s = String(text).trim(); }
+  if (!s) { return Mirage.fail({ message: 'رمز غير مفهوم' }); }
+  location.href = 'checkin.html?s=' + encodeURIComponent(s) + (t ? '&t=' + encodeURIComponent(t) : '');
+}
+
+function stopCam() {
+  if (STREAM) { STREAM.getTracks().forEach(function (t) { t.stop(); }); STREAM = null; }
+}
+window.addEventListener('pagehide', stopCam);
+
+function askCode() {
+  Swal.fire({
+    title: 'رمز الموقع',
+    input: 'text',
+    inputPlaceholder: 'مثال: 84DC96BB',
+    inputAttributes: { style: 'text-align:center;font-weight:900;direction:ltr' },
+    showCancelButton: true,
+    confirmButtonText: 'تسجيل الدخول إلى الموقع',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#2563EB', cancelButtonColor: '#64748B'
+  }).then(function (r) {
+    var v = String(r.value || '').trim();
+    if (r.isConfirmed && v) location.href = 'checkin.html?s=' + encodeURIComponent(v);
+  });
+}
+</script>
+</body>
+</html>

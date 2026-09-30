@@ -111,12 +111,28 @@ const MirageAPI = {
       out.message = "السجل موجود مسبقاً.";
       out.detail = msg;
     } else if (e.code === "23503") {
-      out.message = "قيمة مرتبطة غير موجودة (مشروع أو مركز غير مسجّل).";
+      // الروابط الجديدة (الترقية ٢٦) تمنع حذف قيمة تستعملها البيانات
+      if (/update or delete|still referenced/i.test(msg)) {
+        out.message = "لا يمكن حذف هذه القيمة: سجلات في النظام ما زالت تستعملها.";
+        out.detail = "احذف ارتباطها أولاً، أو وحّدها على قيمة أخرى من «إدارة النظام ← توحيد البيانات».";
+      } else {
+        out.message = "قيمة مرتبطة غير موجودة (مشروع أو مركز غير مسجّل).";
+        out.detail = "أضِفها إلى قائمتها أولاً من «إعدادات القوائم».";
+      }
     } else if (/Failed to fetch|NetworkError/i.test(msg)) {
       out.message = "تعذّر الوصول إلى قاعدة البيانات. تحقّق من الاتصال ومن رابط المشروع.";
     } else if (/JWT|not authenticated|session/i.test(msg)) {
       out.message = "انتهت جلستك. أعد تسجيل الدخول.";
     }
+
+    // يُسجَّل العطل ليراه مدير النظام — عدا ما هو متوقَّع (صلاحية أو جلسة أو شبكة)
+    try {
+      var skip = /صلاحية|جلستك|الاتصال|موجود مسبقاً|ما زالت تستعملها/.test(out.message);
+      if (!skip && typeof Mirage !== "undefined" && Mirage.recordError) {
+        Mirage.recordError(out.message + " — " + msg, e.code ? ("code " + e.code) : "");
+      }
+    } catch (x) {}
+
     return out;
   },
 
@@ -204,6 +220,26 @@ const MirageAPI = {
 
   num: function (v) { var n = Number(v); return isNaN(n) ? 0 : n; },
   str: function (v) { return v === undefined || v === null ? "" : String(v).trim(); },
+
+  /* ─────────── سقف الصفوف ───────────
+     جلب جدول كامل إلى المتصفح يبطئه مع نمو البيانات. فيُطلب عدد
+     السجلات الفعلي مع أول ألفي سطر، وإن زادت أُعلِم المستخدم صراحةً
+     بأن ما يراه جزء — فلا تختفي بيانات في صمت. */
+
+  CAP: 2000,
+
+  /** يضيف السقف وطلب العدّ الفعلي إلى أي استعلام */
+  cap: function (q, p) {
+    var n = this.num(p && p.limit) || this.CAP;
+    return q.limit(n);
+  },
+
+  /** يبني بيانات «كم عُرض من كم» من رد الاستعلام */
+  meta: function (r, shown, p) {
+    var n = this.num(p && p.limit) || this.CAP;
+    var total = (r && typeof r.count === "number") ? r.count : shown;
+    return { total: total, shown: shown, truncated: total > shown, limit: n };
+  },
 
   /** تقرير موحَّد لعمليتَي الاستيراد (الموظفون والمستخدمون) */
   importReport: function (d) {
@@ -1016,6 +1052,282 @@ const MirageAPI = {
       return { status: "success", moved: Number((r.data && r.data.moved) || 0) };
     },
 
+    /* ─────────── الدوام والإجازات ─────────── */
+
+    /** بيانات الموقع من رمزه — لصفحة المسح */
+    attend_site: async function (p) {
+      var r = await SB.rpc("attend_site", { p_code: this.str(p.code) });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّرت قراءة الموقع");
+      var d = r.data || {};
+      return {
+        status: "success",
+        id: d.id, name: d.name || "", project: d.project || "",
+        lat: d.lat, lng: d.lng, radius: Number(d.radius || 150),
+        mode: d.mode || "static", person: d.person || "",
+        open: d.open === true,
+        leave_types: d.leave_types || [],
+        policy: d.policy || {}
+      };
+    },
+
+    /** تسجيل حضور أو انصراف */
+    attend_scan: async function (p) {
+      var r = await SB.rpc("attend_scan", {
+        p_code: this.str(p.code),
+        p_kind: this.str(p.kind) || null,
+        p_token: this.str(p.token) || null,
+        p_lat: (p.lat === undefined || p.lat === null || p.lat === "") ? null : Number(p.lat),
+        p_lng: (p.lng === undefined || p.lng === null || p.lng === "") ? null : Number(p.lng),
+        p_acc: (p.acc === undefined || p.acc === null || p.acc === "") ? null : Number(p.acc),
+        p_agent: navigator.userAgent
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تسجيل الدوام");
+      var d = r.data || {};
+      return {
+        status: "success", kind: d.kind, site: d.site, at: d.at,
+        distance: Number(d.distance || 0), inside: d.inside,
+        source: d.source, hours: Number(d.hours_today || 0), radius: Number(d.radius || 0)
+      };
+    },
+
+    /** الرمز المعروض الآن على شاشة الموقع */
+    attend_code: async function (p) {
+      var r = await SB.rpc("attend_code", { p_site_id: this.num(p.id) });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر توليد الرمز");
+      var d = r.data || {};
+      return { status: "success", site: d.site, code: d.code, token: d.token, left: Number(d.left || 30) };
+    },
+
+    /** تسجيل إجازة */
+    leave_new: async function (p) {
+      var r = await SB.rpc("leave_new", {
+        p_code: this.str(p.code) || null, p_kind: this.str(p.kind),
+        p_from: this.str(p.from), p_to: this.str(p.to),
+        p_reason: this.str(p.reason) || null,
+        p_lat: (p.lat === undefined || p.lat === null || p.lat === "") ? null : Number(p.lat),
+        p_lng: (p.lng === undefined || p.lng === null || p.lng === "") ? null : Number(p.lng)
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تسجيل الإجازة");
+      var d = r.data || {};
+      return { status: "success", id: d.id, days: Number(d.days || 0), kind: d.kind };
+    },
+
+    leave_decide: async function (p) {
+      var r = await SB.rpc("leave_decide", {
+        p_id: this.num(p.id), p_ok: p.ok === true || p.ok === "1",
+        p_note: this.str(p.note) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر اعتماد الإجازة");
+      return { status: "success" };
+    },
+
+    /** سجلّ الدوام يوماً يوماً */
+    attend_days: async function (p) {
+      var r = await SB.rpc("attend_days", {
+        p_from: this.str(p.from) || null, p_to: this.str(p.to) || null,
+        p_person: this.str(p.person) || null,
+        p_project: (this.str(p.project) && this.str(p.project) !== "all") ? this.str(p.project) : null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تحميل سجلّ الدوام");
+      return {
+        status: "success",
+        days: (r.data || []).map(function (x) {
+          return {
+            person: x.person, day: x.day, in: x.first_in || "", out: x.last_out || "",
+            hours: Number(x.hours || 0), site: x.site || "",
+            inside: x.inside, leave: x.leave_kind || "", state: x.state || ""
+          };
+        })
+      };
+    },
+
+    leave_balance: async function (p) {
+      var r = await SB.rpc("leave_balance", {
+        p_person: this.str(p.person) || null,
+        p_year: this.num(p.year) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر قراءة الأرصدة");
+      return {
+        status: "success",
+        rows: (r.data || []).map(function (x) {
+          return {
+            kind: x.kind, quota: Number(x.quota || 0), used: Number(x.used || 0),
+            remaining: x.remaining === null ? null : Number(x.remaining), paid: !!x.paid
+          };
+        })
+      };
+    },
+
+    leaves_list: async function (p) {
+      var r = await SB.rpc("leaves_list", {
+        p_from: this.str(p.from) || null, p_to: this.str(p.to) || null,
+        p_person: this.str(p.person) || null, p_state: this.str(p.state) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تحميل الإجازات");
+      return {
+        status: "success",
+        items: (r.data || []).map(function (x) {
+          return {
+            id: x.id, person: x.person, project: x.project || "", kind: x.kind,
+            from: x.from_date, to: x.to_date, days: Number(x.days || 0),
+            reason: x.reason || "", state: x.state,
+            by: x.decided_by || "", decided: x.decided_at || "",
+            note: x.decision_note || "", at: x.at || ""
+          };
+        })
+      };
+    },
+
+    /* ── إدارة الدوام (مدير النظام) ── */
+
+    sites_list: async function () {
+      var r = await SB.rpc("sites_list");
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تحميل المواقع");
+      return {
+        status: "success",
+        sites: (r.data || []).map(function (x) {
+          return {
+            id: x.id, name: x.name, project: x.project || "", code: x.code,
+            lat: x.lat, lng: x.lng, radius: Number(x.radius || 150),
+            mode: x.mode, active: !!x.active, note: x.note || "", scans: Number(x.scans || 0)
+          };
+        })
+      };
+    },
+
+    site_save: async function (p) {
+      var r = await SB.rpc("site_save", {
+        p_id: this.num(p.id) || null, p_name: this.str(p.name),
+        p_project: this.str(p.project) || null,
+        p_lat: (p.lat === "" || p.lat === null || p.lat === undefined) ? null : Number(p.lat),
+        p_lng: (p.lng === "" || p.lng === null || p.lng === undefined) ? null : Number(p.lng),
+        p_radius: this.num(p.radius) || 150, p_mode: this.str(p.mode) || "static",
+        p_active: p.active !== false, p_note: this.str(p.note) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ الموقع");
+      return { status: "success", id: (r.data && r.data.id) || 0 };
+    },
+
+    site_reset_code: async function (p) {
+      var r = await SB.rpc("site_reset_code", { p_id: this.num(p.id) });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تجديد الرمز");
+      return { status: "success", code: (r.data && r.data.code) || "" };
+    },
+
+    site_delete: async function (p) {
+      var r = await SB.rpc("site_delete", { p_id: this.num(p.id) });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حذف الموقع");
+      return { status: "success" };
+    },
+
+    leave_types: async function () {
+      var r = await SB.from("leave_types").select("*").order("sort").order("name");
+      if (r.error) return this.err(r.error, "تعذّر تحميل أنواع الإجازات");
+      return {
+        status: "success",
+        types: (r.data || []).map(function (x) {
+          return {
+            name: x.name, quota: Number(x.quota_days || 0), paid: !!x.paid,
+            self: !!x.self_serve, needs_note: !!x.needs_note, sort: Number(x.sort || 10)
+          };
+        })
+      };
+    },
+
+    leave_type_save: async function (p) {
+      var r = await SB.rpc("leave_type_save", {
+        p_name: this.str(p.name), p_quota: this.num(p.quota),
+        p_paid: p.paid !== false, p_self: p.self !== false,
+        p_note_required: p.needs_note === true, p_sort: this.num(p.sort) || 10
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ نوع الإجازة");
+      return { status: "success" };
+    },
+
+    leave_type_delete: async function (p) {
+      var r = await SB.rpc("leave_type_delete", { p_name: this.str(p.name) });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حذف نوع الإجازة");
+      return { status: "success" };
+    },
+
+    work_policy: async function () {
+      var r = await SB.from("work_policy").select("*").eq("id", 1).maybeSingle();
+      if (r.error || !r.data) return { status: "success", policy: {} };
+      var d = r.data;
+      return {
+        status: "success",
+        policy: {
+          daily: Number(d.daily_hours || 8), week_days: Number(d.week_days || 6),
+          weekend: d.weekend || [], grace: Number(d.grace_min || 15),
+          gap: Number(d.min_gap_min || 5), max_shift: Number(d.max_shift_hours || 16),
+          require_location: d.require_location !== false, note: d.note || ""
+        }
+      };
+    },
+
+    work_policy_save: async function (p) {
+      var r = await SB.rpc("work_policy_save", {
+        p_daily: Number(p.daily) || 8, p_week_days: this.num(p.week_days) || 6,
+        p_weekend: Array.isArray(p.weekend) ? p.weekend : null,
+        p_grace: this.num(p.grace), p_gap: this.num(p.gap),
+        p_max_shift: Number(p.max_shift) || 16,
+        p_require_loc: p.require_location !== false,
+        p_note: this.str(p.note) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ سياسة الدوام");
+      return { status: "success" };
+    },
+
+    /* ─────────── سجلّ الأعطال ─────────── */
+
+    /** يسجّل عطلاً بهدوء — لا يستدعي err أبداً حتى لا يستدعي نفسه */
+    log_error: async function (p) {
+      try {
+        await SB.rpc("log_error", {
+          p_message: this.str(p.message), p_page: this.str(p.page),
+          p_kind: this.str(p.kind) || "js", p_detail: this.str(p.detail),
+          p_agent: this.str(p.agent)
+        });
+      } catch (e) {}
+      return { status: "success" };
+    },
+
+    /** آخر الأعطال — لمدير النظام */
+    errors_list: async function (p) {
+      var r = await SB.rpc("errors_list", { p_limit: this.num(p.limit) || 100 });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر قراءة سجلّ الأعطال");
+      return {
+        status: "success",
+        items: (r.data || []).map(function (e) {
+          return {
+            id: e.id, at: e.at || "", who: e.who || "", page: e.page || "",
+            kind: e.kind || "", message: e.message || "",
+            detail: e.detail || "", agent: e.agent || ""
+          };
+        })
+      };
+    },
+
+    errors_clear: async function (p) {
+      var r = await SB.rpc("errors_clear", { p_days: this.num(p.days) || 0 });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تفريغ السجلّ");
+      return { status: "success", deleted: Number((r.data && r.data.deleted) || 0) };
+    },
+
+    /** الترقيات المنفَّذة على قاعدة البيانات */
+    schema_version: async function () {
+      var r = await SB.from("schema_version").select("*").order("step", { ascending: false });
+      if (r.error) return { status: "success", steps: [], last: 0 };
+      var rows = r.data || [];
+      return {
+        status: "success",
+        last: rows.length ? rows[0].step : 0,
+        steps: rows.map(function (x) {
+          return { step: x.step, title: x.title, at: localStamp(x.applied) };
+        })
+      };
+    },
+
     /* ─────────── كلمات المرور ─────────── */
 
     /**
@@ -1459,10 +1771,11 @@ const MirageAPI = {
 
     /* ─────────── الموظفون ─────────── */
     employees_list: async function (p) {
-      var q = SB.from("employees").select("*").order("name");
+      var q = SB.from("employees").select("*", { count: "exact" }).order("name");
       if (p.project && this.str(p.project) !== "all") q = q.eq("project", this.str(p.project));
-      var r = await q;
+      var r = await this.cap(q, p);
       if (r.error) return this.err(r.error, "تعذّر تحميل الموظفين");
+      var cap = this.meta(r, (r.data || []).length, p);
 
       // مستخدمو النظام المرتبطون بمشروع يظهرون في السجل نفسه (الترقية 19)
       var su = await SB.rpc("project_users");
@@ -1490,6 +1803,7 @@ const MirageAPI = {
 
       return {
         status: "success",
+        total: cap.total, shown: cap.shown, truncated: cap.truncated,
         users: users,
         user_names: Object.keys(byName),
         employees: (r.data || []).map(function (e) {
@@ -1632,17 +1946,19 @@ const MirageAPI = {
 
     violations_list: async function (p) {
       var self = this;
-      var q = SB.from("violations").select("*").order("id", { ascending: false });
+      var q = SB.from("violations").select("*", { count: "exact" }).order("id", { ascending: false });
       if (p.month) {
         var mr = this.monthRange(this.str(p.month));
         q = q.gte("violation_date", mr[0]).lt("violation_date", mr[1]);
       }
-      var r = await q;
+      var r = await this.cap(q, p);
       if (r.error) return this.err(r.error, "تعذّر تحميل البلاغات");
+      var cap = this.meta(r, (r.data || []).length, p);
 
       var top = await SB.rpc("is_top");
       return {
         status: "success",
+        total: cap.total, shown: cap.shown, truncated: cap.truncated,
         my_role: Mirage.session().role,
         my_name: Mirage.session().realName,
         can_see_all: !!top.data,
@@ -1803,16 +2119,18 @@ const MirageAPI = {
 
     followups_list: async function (p) {
       var self = this;
-      var q = SB.from("followups").select("*").order("id", { ascending: false });
+      var q = SB.from("followups").select("*", { count: "exact" }).order("id", { ascending: false });
       if (p.project && this.str(p.project) !== "all") q = q.eq("project", this.str(p.project));
       if (p.state   && this.str(p.state)   !== "all") q = q.eq("state", this.str(p.state));
 
-      var r = await q;
+      var r = await this.cap(q, p);
       if (r.error) return this.err(r.error, "تعذّر تحميل المهام");
+      var cap = this.meta(r, (r.data || []).length, p);
 
       var extra = await Promise.all([SB.rpc("is_top"), SB.rpc("my_projects"), SB.rpc("my_level")]);
       return {
         status: "success",
+        total: cap.total, shown: cap.shown, truncated: cap.truncated,
         can_see_all: !!extra[0].data,
         my_projects: extra[1].data || [],
         my_level: extra[2].data,
@@ -1971,8 +2289,8 @@ const MirageAPI = {
     movement_list: async function (p) {
       var self = this;
       var m = this.str(p.month), project = this.str(p.project);
-      var qa = SB.from("resignations").select("*").order("leave_date", { ascending: false });
-      var qb = SB.from("new_hires").select("*").order("work_start", { ascending: false });
+      var qa = SB.from("resignations").select("*", { count: "exact" }).order("leave_date", { ascending: false });
+      var qb = SB.from("new_hires").select("*", { count: "exact" }).order("work_start", { ascending: false });
       if (m) {
         var mr = this.monthRange(m);
         qa = qa.gte("leave_date", mr[0]).lt("leave_date", mr[1]);
@@ -2023,12 +2341,13 @@ const MirageAPI = {
 
     readiness_list: async function (p) {
       var self = this;
-      var q = SB.from("readiness").select("*").order("report_date", { ascending: false });
+      var q = SB.from("readiness").select("*", { count: "exact" }).order("report_date", { ascending: false });
       if (p.month) q = q.eq("month", this.str(p.month));
       if (p.project && this.str(p.project) !== "all") q = q.eq("project", this.str(p.project));
 
-      var r = await q;
+      var r = await this.cap(q, p);
       if (r.error) return this.err(r.error, "تعذّر تحميل التقارير");
+      var cap = this.meta(r, (r.data || []).length, p);
 
       var list = (r.data || []).map(function (x) {
         return {
@@ -2055,7 +2374,8 @@ const MirageAPI = {
 
       var extra = await Promise.all([SB.rpc("my_projects"), SB.rpc("my_level")]);
       return {
-        status: "success", reports: list, by_date: byDate,
+        status: "success",
+        total: cap.total, shown: cap.shown, truncated: cap.truncated, reports: list, by_date: byDate,
         my_projects: extra[0].data || [], my_level: extra[1].data
       };
     },
