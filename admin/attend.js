@@ -24,6 +24,48 @@ function resetSite() {
   document.getElementById('stMode').value = 'static';
   document.getElementById('stRadius').value = 150;
   document.getElementById('stActive').checked = true;
+  document.getElementById('stCycle').value = '30';
+  document.getElementById('stOne').checked = true;
+  cycleUI();
+}
+
+/** الثواني بالعربية: ٣٠ ← «نصف دقيقة» ، ٨٦٤٠٠ ← «يوم» */
+function cycleText(sec) {
+  sec = Number(sec || 30);
+  if (sec === 30) return 'نصف دقيقة';
+  if (sec < 60) return Mirage.ltr(String(sec)) + ' ثانية';
+  if (sec < 3600) return Mirage.ltr(String(Math.round(sec / 60))) + ' دقيقة';
+  if (sec < 86400) return Mirage.ltr(String(Math.round(sec / 3600))) + ' ساعة';
+  if (sec === 86400) return 'يوم';
+  if (sec === 604800) return 'أسبوع';
+  return Mirage.ltr(String(Math.round(sec / 86400))) + ' يوم';
+}
+
+/** كلام مفهوم بدل أرقام: ماذا يعني اختيار المدير هنا فعلاً */
+function cycleUI() {
+  var mode = document.getElementById('stMode').value;
+  var row  = document.getElementById('cycleRow');
+  if (!row) return;                       // admin.html قديم
+  row.style.display = (mode === 'static') ? 'none' : '';
+  if (mode === 'static') return;
+
+  var sec  = Number(document.getElementById('stCycle').value || 30);
+  var one  = document.getElementById('stOne').checked;
+  var txt  = cycleText(sec);
+
+  document.getElementById('cycleNote').innerHTML =
+    'يتغيّر الرمز كل <b>' + txt + '</b>، ولا يُقبل الرمز القديم بعدها. ' +
+    (sec <= 900
+      ? 'اعرضه على شاشة أو جهاز لوحي عند المدخل.'
+      : 'اطبعه واستبدله كل ' + txt + ' — اطبع الجديد من زرّ «الرمز».');
+
+  document.getElementById('oneHint').innerHTML = one
+    ? (sec <= 900
+        ? 'كل حضور أو انصراف أو إجازة يلزمه مسح جديد — وهذا ما تريده.'
+        : '<b style="color:#B91C1C">انتبه:</b> مع فترة بهذا الطول، من سجّل حضوره ' +
+          'لن يستطيع تسجيل انصرافه إلا بعد تغيّر الرمز. ' +
+          'اجعل الفترة ربع ساعة أو أقل، أو أطفئ هذا الخيار.')
+    : 'الرمز الواحد يقبل أكثر من تسجيل ما دام صالحاً.';
 }
 
 function grabGeo() {
@@ -58,7 +100,9 @@ function saveSite() {
     lng: document.getElementById('stLng').value.trim(),
     radius: document.getElementById('stRadius').value,
     mode: document.getElementById('stMode').value,
-    active: document.getElementById('stActive').checked
+    active: document.getElementById('stActive').checked,
+    cycle: document.getElementById('stCycle').value,
+    one: document.getElementById('stOne').checked
   }).then(function (res) {
     Mirage.busy(btn, false);
     if (res.status !== 'success') return Mirage.fail(res);
@@ -79,7 +123,7 @@ function sitesLoad() {
                       'أضِف أول موقع من البطاقة أعلاه.</div>';
       return;
     }
-    var modes = { static: 'ثابت مطبوع', rotating: 'متجدّد على شاشة', both: 'الاثنان' };
+    var modes = { static: 'ثابت دائماً', rotating: 'متجدّد', both: 'الاثنان' };
     box.innerHTML =
       '<div class="table-wrap"><table><thead><tr>' +
       '<th>الموقع</th><th>المشروع</th><th>الرمز</th><th>نوعه</th><th>النطاق</th>' +
@@ -88,7 +132,11 @@ function sitesLoad() {
         return '<tr><td><span class="cell-link" onclick="editSite(' + i + ')">' + esc(s.name) + '</span></td>' +
           '<td>' + esc(s.project || '—') + '</td>' +
           '<td><code style="direction:ltr;font-weight:900">' + esc(s.code) + '</code></td>' +
-          '<td><span class="tag tag-blue">' + esc(modes[s.mode] || s.mode) + '</span></td>' +
+          '<td><span class="tag tag-blue">' + esc(modes[s.mode] || s.mode) + '</span>' +
+            (s.mode === 'static' ? '' :
+              '<div style="font-size:11px;color:#64748B;margin-top:3px">كل ' +
+              cycleText(s.cycle) + (s.one === false ? '' : ' · مسحة لكل تسجيل') + '</div>') +
+          '</td>' +
           '<td>' + Mirage.ltr(String(s.radius)) + ' م</td>' +
           '<td style="direction:ltr;font-size:11.5px;color:#64748B">' +
             (s.lat ? Number(s.lat).toFixed(4) + ', ' + Number(s.lng).toFixed(4)
@@ -116,6 +164,15 @@ function editSite(i) {
   document.getElementById('stLng').value = s.lng === null ? '' : s.lng;
   document.getElementById('stRadius').value = s.radius;
   document.getElementById('stActive').checked = s.active;
+  var cy = document.getElementById('stCycle'), v = String(s.cycle || 30);
+  // فترة محفوظة ليست من الفترات الجاهزة: تُضاف كي لا تُفقد عند التعديل
+  if (!Array.prototype.some.call(cy.options, function (o) { return o.value === v; })) {
+    cy.insertAdjacentHTML('beforeend',
+      '<option value="' + esc(v) + '">' + esc(cycleText(s.cycle)) + '</option>');
+  }
+  cy.value = v;
+  document.getElementById('stOne').checked = s.one !== false;
+  cycleUI();
   document.getElementById('stName').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -156,8 +213,9 @@ function printQR(i) {
         esc(s.code) + '</b></div>' +
       (s.mode === 'rotating'
         ? '<div class="alert alert-warn" style="text-align:right;margin-top:12px;font-size:12.5px">' +
-          'هذا الموقع مضبوط على <b>الرمز المتجدّد</b> — فالمطبوع وحده لن يُقبل. ' +
-          'اجعله «الاثنان» إن أردت المطبوع أيضاً.</div>'
+          'هذا الموقع مضبوط على <b>الرمز المتجدّد كل ' + cycleText(s.cycle) + '</b> — ' +
+          'فالمطبوع الثابت لن يُقبل. اطبع الرمز المتجدّد من زرّ «الشاشة»، ' +
+          'أو اجعل النوع «الاثنان» ليعمل المطبوع أيضاً.</div>'
         : '') +
     '</div>';
 
@@ -172,7 +230,7 @@ function printQR(i) {
 }
 
 /** ورقة جاهزة للتعليق: الرمز كبيراً واسم الموقع وتعليمات قصيرة */
-function printSheet(s) {
+function printSheet(s, url, extra) {
   var area = document.getElementById('printArea') || (function () {
     var d = document.createElement('div'); d.id = 'printArea'; document.body.appendChild(d); return d;
   })();
@@ -181,12 +239,15 @@ function printSheet(s) {
       '<div style="font-size:30px;font-weight:900;color:#0F172A;margin-bottom:6px">' + esc(s.name) + '</div>' +
       '<div style="font-size:16px;color:#475569;font-weight:700;margin-bottom:26px">' +
         esc(s.project || '') + '</div>' +
-      '<div style="display:flex;justify-content:center">' + qrSvg(siteUrl(s.code), 420) + '</div>' +
+      '<div style="display:flex;justify-content:center">' +
+        qrSvg(url || siteUrl(s.code), 420) + '</div>' +
       '<div style="font-size:22px;font-weight:900;margin-top:26px;color:#0F172A">تسجيل الدوام</div>' +
       '<div style="font-size:15px;color:#475569;line-height:2;margin-top:10px">' +
         'وجّه كاميرا هاتفك إلى الرمز، فتفتح صفحة ميراج<br>' +
         'واختر: تسجيل الدوام · إجازة سنوية · إجازة مرضية' +
       '</div>' +
+      (extra ? '<div style="font-size:14px;font-weight:800;color:#B91C1C;margin-top:14px">' +
+               esc(extra) + '</div>' : '') +
       '<div style="font-size:12px;color:#94A3B8;margin-top:22px;direction:ltr">' + esc(s.code) + '</div>' +
     '</div>';
   var t = document.querySelector('.swal2-container');
@@ -197,7 +258,7 @@ function printSheet(s) {
 
 /* ─────────── شاشة الرمز المتجدّد ─────────── */
 
-var LIVE = null;
+var LIVE = null, LIVE_NOW = null;
 
 function liveQR(i) {
   var s = SITES[i]; if (!s) return;
@@ -210,9 +271,15 @@ function liveQR(i) {
               'align-items:center"><span class="hint">جارٍ التوليد…</span></div>' +
             '<div style="font-size:22px;font-weight:900;color:#0F172A;margin-top:10px" id="liveLeft"></div>' +
             '<p style="font-size:12.5px;color:#64748B;line-height:1.9;margin:10px 0 0">' +
-              'ارفع الشاشة أمام الموظفين. الرمز يتغيّر كل نصف دقيقة، فلا ينفع تصويره.<br>' +
-              'وأبقِ هذه النافذة مفتوحة ما دام التسجيل جارياً.' +
-            '</p></div>',
+              'ارفع الشاشة أمام الموظفين. الرمز يتغيّر كل <b>' + cycleText(s.cycle) +
+              '</b>، فلا ينفع تصويره.<br>' +
+              (Number(s.cycle || 30) >= 3600
+                ? 'ويمكنك طباعة هذا الرمز وتعليقه، على أن تستبدله كل ' + cycleText(s.cycle) + '.'
+                : 'وأبقِ هذه النافذة مفتوحة ما دام التسجيل جارياً.') +
+            '</p>' +
+            '<div style="margin-top:10px">' +
+              '<button class="btn btn-ghost btn-sm" type="button" onclick="printLive()">🖨️ طباعة الرمز الحالي</button>' +
+            '</div></div>',
     width: 460,
     showConfirmButton: false,
     showCloseButton: true,
@@ -226,6 +293,7 @@ function liveQR(i) {
       if (!box) { if (LIVE) { clearInterval(LIVE); LIVE = null; } return; }
       if (res.status !== 'success') { box.innerHTML = '<span class="hint">' + esc(res.message) + '</span>'; return; }
       box.innerHTML = qrSvg(siteUrl(res.code, res.token), 250);
+      LIVE_NOW = { site: s, code: res.code, token: res.token, cycle: res.cycle };
       var left = res.left;
       var lbl = document.getElementById('liveLeft');
       if (lbl) lbl.textContent = '⏳ ' + left + ' ثانية';
@@ -234,12 +302,25 @@ function liveQR(i) {
         var l = document.getElementById('liveLeft');
         if (!l) return clearInterval(tick);
         if (left <= 0) return clearInterval(tick);
-        l.textContent = '⏳ ' + left + ' ثانية';
+        l.textContent = left > 120
+          ? '⏳ يتجدّد بعد ' + Math.ceil(left / 60) + ' دقيقة'
+          : '⏳ ' + left + ' ثانية';
       }, 1000);
+
+      // نُعيد السؤال قبيل انقلاب الدورة، ولا نُتعب الخادم في الدورات الطويلة
+      if (LIVE) { clearInterval(LIVE); }
+      LIVE = setInterval(pull, Math.min(Math.max((res.left - 1) * 1000, 3000), 60000));
     });
   };
   pull();
-  LIVE = setInterval(pull, 15000);
+}
+
+/** طباعة الرمز المعروض الآن — للمواقع التي تتجدّد كل ساعة أو أكثر */
+function printLive() {
+  if (!LIVE_NOW) return;
+  var s = LIVE_NOW.site;
+  printSheet(s, siteUrl(LIVE_NOW.code, LIVE_NOW.token),
+             'صالح ' + cycleText(LIVE_NOW.cycle) + ' من لحظة الطباعة');
 }
 
 /* ─────────── أنواع الإجازات ─────────── */

@@ -1078,6 +1078,7 @@ const MirageAPI = {
         id: d.id, name: d.name || "", project: d.project || "",
         lat: d.lat, lng: d.lng, radius: Number(d.radius || 150),
         mode: d.mode || "static", person: d.person || "",
+        cycle: Number(d.cycle || 30), one_per_code: d.one_per_code !== false,
         open: d.open === true,
         leave_types: d.leave_types || [],
         policy: d.policy || {}
@@ -1120,7 +1121,10 @@ const MirageAPI = {
       var r = await SB.rpc("attend_code", { p_site_id: this.num(p.id) });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر توليد الرمز");
       var d = r.data || {};
-      return { status: "success", site: d.site, code: d.code, token: d.token, left: Number(d.left || 30) };
+      return {
+        status: "success", site: d.site, code: d.code, token: d.token,
+        left: Number(d.left || 30), cycle: Number(d.cycle || 30)
+      };
     },
 
     /** تسجيل إجازة */
@@ -1132,7 +1136,8 @@ const MirageAPI = {
         p_lat: (p.lat === undefined || p.lat === null || p.lat === "") ? null : Number(p.lat),
         p_lng: (p.lng === undefined || p.lng === null || p.lng === "") ? null : Number(p.lng),
         p_acc: (p.acc === undefined || p.acc === null || p.acc === "") ? null : Number(p.acc),
-        p_device: this.devId()
+        p_device: this.devId(),
+        p_token: this.str(p.token) || null
       });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر تسجيل الإجازة");
       var d = r.data || {};
@@ -1226,7 +1231,8 @@ const MirageAPI = {
           return {
             id: x.id, name: x.name, project: x.project || "", code: x.code,
             lat: x.lat, lng: x.lng, radius: Number(x.radius || 150),
-            mode: x.mode, active: !!x.active, note: x.note || "", scans: Number(x.scans || 0)
+            mode: x.mode, active: !!x.active, note: x.note || "", scans: Number(x.scans || 0),
+            cycle: Number(x.rotate_sec || 30), one: x.one_per_code !== false
           };
         })
       };
@@ -1239,7 +1245,10 @@ const MirageAPI = {
         p_lat: (p.lat === "" || p.lat === null || p.lat === undefined) ? null : Number(p.lat),
         p_lng: (p.lng === "" || p.lng === null || p.lng === undefined) ? null : Number(p.lng),
         p_radius: this.num(p.radius) || 150, p_mode: this.str(p.mode) || "static",
-        p_active: p.active !== false, p_note: this.str(p.note) || null
+        p_active: p.active !== false,
+        p_rotate: this.num(p.cycle) || 30,
+        p_one: p.one !== false,
+        p_note: this.str(p.note) || null
       });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ الموقع");
       return { status: "success", id: (r.data && r.data.id) || 0 };

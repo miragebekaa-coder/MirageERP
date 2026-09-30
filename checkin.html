@@ -62,6 +62,21 @@
   .ck-main .ic { background: rgba(255,255,255,.14); }
   .ck-locked { opacity: .45; pointer-events: none; }
 
+  /* شريط الاختيار فوق الكاميرا */
+  .ck-pick {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    background: var(--surface, #fff); border: 1px solid var(--border, #E2E8F0);
+    border-radius: var(--radius-md); padding: 12px 14px;
+    box-shadow: inset -5px 0 0 0 var(--accent, #CBD5E1), var(--shadow-sm);
+  }
+  .ck-pick .ic {
+    width: 40px; height: 40px; flex: none; display: grid; place-items: center;
+    font-size: 21px; border-radius: 12px; background: #F1F5F9;
+  }
+  .ck-pick .tx { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .ck-pick .tx b { font-size: 14.5px; color: var(--brand-dark); }
+  .ck-pick .tx span { font-size: 12px; color: var(--text-muted); font-weight: 700; }
+
   #scanBox { position: relative; border-radius: var(--radius-md); overflow: hidden; background: #000; }
   #scanBox video { width: 100%; display: block; }
   #scanBox .frame {
@@ -81,7 +96,21 @@
   <div class="ck-wrap">
 
     <!-- لا رمز في الرابط: يُفتح القارئ -->
+    <!-- أولاً: ماذا يريد أن يسجّل -->
+    <div id="menuCard" style="display:none">
+      <div class="card" style="padding:18px 16px">
+        <div class="card-head">
+          <div><h2>ماذا تريد أن تسجّل؟</h2><p>اختر أولاً، ثم امسح رمز الموقع لإتمامه</p></div>
+        </div>
+        <div id="menuBox"><span class="hint">جارٍ التحميل…</span></div>
+      </div>
+      <p class="ck-note" style="margin-top:16px">
+        لكل تسجيل مسحة: بعد اختيارك يُطلب منك مسح رمز الموقع، فلا يُسجَّل شيء عن بُعد.
+      </p>
+    </div>
+
     <div id="scanCard" style="display:none">
+      <div id="pickBar"></div>
       <div class="card">
         <div class="card-head">
           <div><h2>امسح رمز الموقع</h2><p>وجّه الكاميرا إلى الرمز المعلَّق أو المعروض على الشاشة</p></div>
@@ -136,6 +165,9 @@ var USED  = false;    /* المسحة الواحدة تسجيل واحد */
    يُحفظ في تخزين المتصفح فلا يلتفّ عليه بإعادة تحميل الصفحة. */
 var SPENT_KEY = 'mgScan:' + (Mirage.session().username || 'u');
 
+/** مفتاح الاستهلاك: الرمز المتجدّد يُميَّز برمزه اللحظي */
+function spentId() { return CODE + (TOKEN ? ':' + TOKEN : ''); }
+
 function spentAt(code) {
   try {
     var m = JSON.parse(localStorage.getItem(SPENT_KEY) || '{}');
@@ -155,7 +187,96 @@ function markSpent(code) {
 
 Mirage.boot({ page: 'checkin', title: 'تسجيل الدوام', sub: 'الحضور والانصراف والإجازات' });
 
-if (CODE) { openSite(); } else { showScanner(); }
+/* ═══════════ الخطوة الأولى: الاختيار ═══════════
+   من فتح الصفحة من القائمة يختار ما يريد تسجيله أولاً، ثم يُطلب منه
+   مسح الرمز. ومن وصل بمسح الرمز مباشرةً بكاميرا هاتفه يرى الخيارات
+   على صفحة الموقع كما كان. والاختيار يُحمَل في الرابط (a=) فلا يضيع
+   حين تُعاد الصفحة بعد المسح. */
+
+var PICK = new URLSearchParams(location.search).get('a') || '';
+
+/** الاختيار نصّاً: «حضور» · «انصراف» · «إجازة:اسم النوع» */
+function pickKind()  { return /^إجازة:/.test(PICK) ? '' : PICK; }
+function pickLeave() { return /^إجازة:/.test(PICK) ? PICK.replace(/^إجازة:/, '') : ''; }
+
+if (CODE) { openSite(); } else { showMenu(); }
+
+/** شاشة الاختيار — بلا موقع بعد، فلا تحتاج رمزاً */
+function showMenu() {
+  document.getElementById('loadBox').style.display = 'none';
+  document.getElementById('siteCard').style.display = 'none';
+  document.getElementById('scanCard').style.display = 'none';
+  document.getElementById('menuCard').style.display = '';
+
+  var me = Mirage.session().realName || '';
+  var today = Mirage.today();
+
+  Promise.all([
+    Mirage.api('leave_types', {}),
+    Mirage.api('attend_days', { from: today, to: today, person: me })
+  ]).then(function (r) {
+    var types = (r[0].status === 'success' ? r[0].types : []).filter(function (t) { return t.self; });
+    var days  = (r[1].status === 'success' ? r[1].days : []) || [];
+    var open  = days.some(function (d) { return d.state === 'بلا انصراف'; });
+
+    var next = open ? 'انصراف' : 'حضور';
+    var h = btnHtml({
+      main: true, a: next === 'حضور' ? '#10B981' : '#EF4444',
+      ic: next === 'حضور' ? '🟢' : '🔴',
+      t1: 'تسجيل ' + next,
+      t2: next === 'حضور' ? 'بداية دوامك' : 'لديك حضور مفتوح اليوم — هذا إنهاؤه',
+      click: "choose('" + next + "')"
+    });
+    if (open) {
+      h += btnHtml({
+        a: '#10B981', t: '#ECFDF5', ink: '#065F46', ic: '🟢',
+        t1: 'تسجيل حضور جديد', t2: 'إن كان دوامك على فترتين',
+        click: "choose('حضور')"
+      });
+    }
+    types.forEach(function (t) {
+      var f = faceOf(t.name);
+      h += btnHtml({
+        a: f.a, t: f.t, ink: f.ink, ic: f.ic,
+        t1: 'تسجيل ' + esc(t.name),
+        t2: (t.quota > 0 ? 'الرصيد السنوي ' + Mirage.ltr(String(t.quota)) + ' يوماً' : 'بلا سقف سنوي') +
+            (t.paid ? '' : ' · بلا راتب'),
+        click: 'choose(' + JSON.stringify('إجازة:' + t.name).replace(/"/g, '&quot;') + ')'
+      });
+    });
+    document.getElementById('menuBox').innerHTML = h;
+  });
+}
+
+/** اختار: نحفظ اختياره ونطلب المسح */
+function choose(what) {
+  PICK = what;
+  showScanner();
+}
+
+/** شريط يذكّره بما اختاره وهو يمسح، مع إمكان التراجع */
+function paintPick() {
+  var bar = document.getElementById('pickBar');
+  if (!bar) return;
+  if (!PICK) { bar.innerHTML = ''; return; }
+  var name = pickLeave() || pickKind();
+  var f = pickKind()
+    ? { ic: pickKind() === 'حضور' ? '🟢' : '🔴', a: pickKind() === 'حضور' ? '#10B981' : '#EF4444' }
+    : faceOf(name);
+  bar.innerHTML =
+    '<div class="ck-pick" style="--accent:' + f.a + '">' +
+      '<span class="ic">' + f.ic + '</span>' +
+      '<span class="tx"><b>اخترت: تسجيل ' + esc(name) + '</b>' +
+        '<span>امسح رمز الموقع ليتمّ التسجيل</span></span>' +
+      '<button class="btn btn-ghost btn-sm" type="button" onclick="unpick()">تغيير</button>' +
+    '</div>';
+}
+
+function unpick() {
+  PICK = '';
+  stopCam();
+  showMenu();
+}
 
 
 /* ═══════════ الموقع الجغرافي ═══════════ */
@@ -261,8 +382,11 @@ function openSite() {
     document.getElementById('siteProj').textContent = res.project || '';
 
     // رمز سُجّل به قبل قليل: لا يُقبل مرتين بلا مسح جديد
-    var gap = ((res.policy && res.policy.min_gap_min) || 5) * 60000;
-    if (!TOKEN && Date.now() - spentAt(CODE) < gap) {
+    // الرمز الذي سُجّل به لا يُفتح ثانيةً: المتجدّد يُرفض فوراً،
+    // والثابت خلال الفاصل الذي حدّده مدير النظام.
+    var gap  = ((res.policy && res.policy.min_gap_min) || 5) * 60000;
+    var when = spentAt(spentId());
+    if (when && (TOKEN || Date.now() - when < gap)) {
       document.getElementById('actions').innerHTML =
         '<div class="alert alert-warn" style="margin:0;text-align:right">' +
           '<b>هذا الرمز استُعمل للتو</b><br>' +
@@ -276,7 +400,12 @@ function openSite() {
     }
 
     paintActions();
-    askGeo();
+    askGeo().then(function () {
+      // اختار قبل المسح: يُنفَّذ اختياره فوراً بلا سؤال ثانٍ
+      if (!PICK) return;
+      var k = pickKind(), lv = pickLeave();
+      if (k) { doScan(k); } else if (lv) { doLeave(lv); }
+    });
   });
 }
 
@@ -310,7 +439,7 @@ function btnHtml(opts) {
 /** بعد أي تسجيل: تُقفَل الخيارات ويُطلب مسح جديد */
 function lockAfter(msg) {
   USED = true;
-  markSpent(CODE);
+  markSpent(spentId());
   var box = document.getElementById('actions');
   box.classList.add('ck-locked');
   document.getElementById('rescan').innerHTML =
@@ -449,7 +578,8 @@ function doLeave(kind) {
   }).then(function (r) {
     if (!r.isConfirmed) return;
     Mirage.api('leave_new', {
-      code: CODE, kind: kind, from: r.value.from, to: r.value.to, reason: r.value.reason,
+      code: CODE, kind: kind, token: TOKEN,
+      from: r.value.from, to: r.value.to, reason: r.value.reason,
       lat: GEO ? GEO.lat : '', lng: GEO ? GEO.lng : '', acc: GEO ? GEO.acc : ''
     }).then(function (res) {
       if (res.status !== 'success') {
@@ -473,11 +603,22 @@ function doLeave(kind) {
 function showScanner() {
   document.getElementById('loadBox').style.display = 'none';
   document.getElementById('siteCard').style.display = 'none';
+  document.getElementById('menuCard').style.display = 'none';
   document.getElementById('scanCard').style.display = '';
+  paintPick();
+  // الكاميرا تُفتح من تلقائها بعد الاختيار: خطوة أقلّ على الموظف
+  if (PICK && !STREAM) startCam(true);
 }
 
-function startCam() {
+function startCam(quiet) {
   var btn = document.getElementById('camBtn');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!quiet) {
+      Mirage.note('هذا المتصفح لا يفتح الكاميرا هنا. استعمل كاميرا هاتفك العادية ' +
+                  'ووجّهها إلى الرمز، أو أدخل الرمز يدوياً.', 'الكاميرا غير متاحة');
+    }
+    return;
+  }
   Mirage.busy(btn, true);
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(function (st) {
@@ -490,6 +631,7 @@ function startCam() {
     })
     .catch(function () {
       Mirage.busy(btn, false);
+      if (quiet) return;          // فتحٌ تلقائي: لا نزعج بنافذة خطأ لم يطلبها
       Mirage.note('لم تُفتح الكاميرا. استعمل كاميرا هاتفك العادية ووجّهها إلى الرمز، ' +
                   'أو أدخل الرمز يدوياً.', 'تعذّر فتح الكاميرا');
     });
@@ -519,7 +661,9 @@ function gotCode(text) {
   } catch (e) {}
   if (!s) { s = String(text).trim(); }
   if (!s) { return Mirage.fail({ message: 'رمز غير مفهوم' }); }
-  location.href = 'checkin.html?s=' + encodeURIComponent(s) + (t ? '&t=' + encodeURIComponent(t) : '');
+  location.href = 'checkin.html?s=' + encodeURIComponent(s) +
+                  (t ? '&t=' + encodeURIComponent(t) : '') +
+                  (PICK ? '&a=' + encodeURIComponent(PICK) : '');
 }
 
 function stopCam() {
@@ -539,7 +683,10 @@ function askCode() {
     confirmButtonColor: '#2563EB', cancelButtonColor: '#64748B'
   }).then(function (r) {
     var v = String(r.value || '').trim();
-    if (r.isConfirmed && v) location.href = 'checkin.html?s=' + encodeURIComponent(v);
+    if (r.isConfirmed && v) {
+      location.href = 'checkin.html?s=' + encodeURIComponent(v) +
+                      (PICK ? '&a=' + encodeURIComponent(PICK) : '');
+    }
   });
 }
 </script>

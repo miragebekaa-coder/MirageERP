@@ -639,8 +639,11 @@
   <div class="tab-panel" id="tab-att">
     <div class="alert alert-info">
       لكل موقع رمز يمسحه الموظف بهاتفه فيسجّل حضوره أو انصرافه أو إجازته.
-      <b>الرمز الثابت</b> يُطبع ويُعلَّق مرة واحدة. و<b>الرمز المتجدّد</b> يُعرض على شاشة ويتغيّر كل نصف دقيقة،
-      فلا ينفع تصويره. واختر «الاثنان» ليعمل المطبوع والمعروض معاً.
+      <b>الثابت دائماً</b> يُطبع ويُعلَّق مرة واحدة. و<b>المتجدّد</b> يتغيّر كل فترة تحدّدها أنت —
+      من نصف دقيقة على شاشة عند المدخل، إلى يوم أو أسبوع لرمز مطبوع تستبدله.
+      واختر «الاثنان» ليعمل المطبوع والمتجدّد معاً.
+      <br><b>ومسحة لكل تسجيل:</b> الرمز الذي سُجّل به لا يُقبل من صاحبه ثانيةً —
+      فكل حضور أو انصراف أو إجازة يلزمه مسح جديد.
     </div>
 
     <div class="card">
@@ -659,11 +662,40 @@
         </div>
         <div class="field">
           <label for="stMode">نوع الرمز</label>
-          <select id="stMode">
-            <option value="static">ثابت مطبوع</option>
-            <option value="rotating">متجدّد على شاشة</option>
-            <option value="both">الاثنان معاً</option>
+          <select id="stMode" onchange="cycleUI()">
+            <option value="static">ثابت دائماً — رمز مطبوع لا يتغيّر</option>
+            <option value="rotating">متجدّد — يتغيّر كل فترة تحدّدها</option>
+            <option value="both">الاثنان — الثابت والمتجدّد مقبولان</option>
           </select>
+        </div>
+      </div>
+      <div class="grid-3" id="cycleRow" style="display:none">
+        <div class="field">
+          <label for="stCycle">كل كم يتجدّد الرمز؟</label>
+          <select id="stCycle" onchange="cycleUI()">
+            <option value="30">نصف دقيقة — شاشة أمام الموظفين</option>
+            <option value="60">دقيقة</option>
+            <option value="300">خمس دقائق</option>
+            <option value="900">ربع ساعة</option>
+            <option value="3600">ساعة</option>
+            <option value="28800">ثماني ساعات — كل وردية</option>
+            <option value="86400">يوم — رمز مطبوع يُستبدل يومياً</option>
+            <option value="604800">أسبوع</option>
+          </select>
+          <p class="hint">كلما قصرت الفترة صعُب تصوير الرمز ومشاركته.</p>
+        </div>
+        <div class="field">
+          <label>مسحة لكل تسجيل</label>
+          <label class="check-item" style="margin-top:4px">
+            <input type="checkbox" id="stOne" checked onchange="cycleUI()">
+            <span>الرمز الذي سُجّل به لا يُقبل ثانيةً</span>
+          </label>
+          <p class="hint" id="oneHint"></p>
+        </div>
+        <div class="field">
+          <label>ماذا يعني اختيارك</label>
+          <div class="alert alert-info" id="cycleNote"
+               style="margin:4px 0 0;font-size:12.5px;text-align:right"></div>
         </div>
       </div>
       <div class="grid-3">
