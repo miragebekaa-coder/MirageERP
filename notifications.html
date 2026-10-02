@@ -114,8 +114,8 @@ if (u) {
     Mirage.api('notifications_read', {}).then(function (res) {
       if (res.status !== 'success') return Mirage.fail(res);
       Mirage.toast('حُدِّدت كلها مقروءة');
-      Mirage.refreshBell();
-      load();
+      Mirage.refreshBell(false);
+      load(true);
     });
   };
   load();
@@ -132,13 +132,29 @@ if (u) {
   });
 }
 
-function load() {
+function load(quiet) {
   Mirage.api('notifications_list', { limit: 400 }).then(function (res) {
     if (res.status !== 'success') return Mirage.fail(res);
     ITEMS = res.items || [];
     fillFilters();
     paint();
+    if (!quiet) seal();
   });
+}
+
+/* ─────────── فتح هذه الصفحة = قراءة ───────────
+   تُرسَم القائمة أولاً بتمييز غير المقروء كما هو، ثم تُسجَّل مقروءةً
+   في قاعدة البيانات بعد لحظة — فلا تعود نافذة الإشعار تظهر عند كل
+   دخول، ولا على جهاز آخر، لأن القراءة محفوظة في الخادم لا في المتصفح. */
+function seal() {
+  if (!ITEMS.some(function (n) { return !n.read; })) return;
+  setTimeout(function () {
+    Mirage.api('notifications_read', {}).then(function (r) {
+      if (r.status !== 'success') return;
+      ITEMS.forEach(function (n) { n.read = true; });
+      Mirage.refreshBell(false);
+    });
+  }, 1500);
 }
 
 /** قوائم المُرسِل والسنة والشهر تُبنى ممّا وصلك فعلاً */

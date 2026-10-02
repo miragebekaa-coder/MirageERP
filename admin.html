@@ -29,55 +29,26 @@
 <div class="content">
 
   <div class="tabs">
-    <button class="tab active" data-tab="lists">إعدادات القوائم</button>
-    <button class="tab" data-tab="users">المستخدمون والصلاحيات</button>
-    <button class="tab" data-tab="catalog">لائحة المخالفات</button>
+    <span class="tab-sep">آلية العمل</span>
+    <button class="tab active" data-tab="users">المستخدمون والصلاحيات</button>
     <button class="tab" data-tab="flows">مسارات العمل</button>
+    <button class="tab" data-tab="att">الدوام والمواقع</button>
     <button class="tab" data-tab="merge">توحيد البيانات</button>
+
+    <span class="tab-sep">البيانات</span>
+    <button class="tab" data-tab="lists">إعدادات القوائم</button>
+    <button class="tab" data-tab="catalog">لائحة المخالفات</button>
     <button class="tab" data-tab="io">استيراد وتصدير</button>
     <button class="tab" data-tab="bk">نسخ احتياطي</button>
-    <button class="tab" data-tab="att">الدوام والمواقع</button>
-    <button class="tab" data-tab="hl">صحّة النظام</button>
+
+    <span class="tab-sep">الصيانة</span>
+    <button class="tab" data-tab="hl">صحّة النظام والخادم</button>
   </div>
 
   <!-- ═══════════ ١. إعدادات القوائم ═══════════ -->
   <div class="tab-panel active" id="tab-lists">
     <div class="alert alert-info">
       أي عنصر تضيفه هنا يظهر فوراً في كل القوائم المنسدلة في النظام. وزر (+) الظاهر بجانب القوائم في بقية الصفحات يضيف إلى هذه الجداول نفسها، وهو متاح لمدير النظام فقط.
-    </div>
-
-    <div class="card broadcast-card">
-      <div class="card-head">
-        <div><h2>إرسال إشعار</h2>
-        <p>لكل المستخدمين، أو لأقسام بكاملها، أو لمشاريع، أو لأشخاص بأعينهم — ويظهر في جرس الإشعارات لدى كل مستلم</p></div>
-      </div>
-      <div id="composer"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <div><h2>سجل الإشعارات المرسلة</h2>
-        <p>كل إشعار محفوظ بعنوانه وتاريخه ومضمونه ومشروعه ومستلميه. اضغط على المستلمين لعرض أسمائهم</p></div>
-      </div>
-      <div id="noticeLog"></div>
-    </div>
-
-    <div class="card" id="pushAdmin">
-      <div class="card-head">
-        <div><h2>📲 إشعارات الهاتف</h2><p>تجهيز لمرة واحدة: بعدها يفعّلها كل مستخدم على جهازه من صفحة الإشعارات</p></div>
-      </div>
-      <div id="pushAdminBody"><div class="hint">جارٍ الفحص…</div></div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <div><h2>فحص الاتصال بالخادم</h2>
-        <p>استخدمه إن ظهرت رسالة «الخادم أعاد صفحة بدل بيانات» في أي صفحة</p></div>
-        <button class="btn btn-dark btn-sm" id="pingBtn" type="button">
-          <span class="btn-text">فحص الآن</span><span class="spinner"></span>
-        </button>
-      </div>
-      <div id="pingResult" style="font-size:13.5px;color:var(--text-muted)">لم يُجرَ فحص بعد.</div>
     </div>
 
     <div class="grid-2">
@@ -839,8 +810,27 @@
   <!-- ═══ صحّة النظام ═══ -->
   <div class="tab-panel" id="tab-hl">
     <div class="alert alert-info">
-      هنا ترى ما لا يصل إليك عادةً: الأعطال التي وقعت عند المستخدمين على أجهزتهم،
-      وحالة قاعدة بياناتك وأي ترقية ينقصها. السجلّ لا يراه أحد سواك، ولا يُحفَظ فيه شيء من بيانات النماذج.
+      هنا ترى ما لا يصل إليك عادةً: حالة الخادم وسرعته، والأعطال التي وقعت عند
+      المستخدمين على أجهزتهم، وحالة قاعدة بياناتك وأي ترقية ينقصها.
+      السجلّ لا يراه أحد سواك، ولا يُحفَظ فيه شيء من بيانات النماذج.
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h2>🛰️ فحص الاتصال بالخادم</h2>
+        <p>استخدمه إن ظهرت رسالة «الخادم أعاد صفحة بدل بيانات» في أي صفحة</p></div>
+        <button class="btn btn-dark btn-sm" id="pingBtn" type="button">
+          <span class="btn-text">فحص الآن</span><span class="spinner"></span>
+        </button>
+      </div>
+      <div id="pingResult" style="font-size:13.5px;color:var(--text-muted)">لم يُجرَ فحص بعد.</div>
+    </div>
+
+    <div class="card" id="pushAdmin">
+      <div class="card-head">
+        <div><h2>📲 إشعارات الهاتف</h2><p>تجهيز لمرة واحدة: بعدها يفعّلها كل مستخدم على جهازه من صفحة الإشعارات</p></div>
+      </div>
+      <div id="pushAdminBody"><div class="hint">جارٍ الفحص…</div></div>
     </div>
 
     <div class="card">
@@ -892,7 +882,7 @@
     ['admin/users.js',     typeof paintUsers],
     ['admin/catalog.js',   typeof paintCatalog],
     ['admin/flows.js',     typeof loadFlow],
-    ['admin/server.js',    typeof pushAdmin],
+    ['admin/server.js',    typeof checkServer],
     ['admin/io.js',        typeof exportSheet],
     ['admin/backup.js',    typeof backupsLoad],
     ['admin/passwords.js', typeof setPwd],

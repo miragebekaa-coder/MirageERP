@@ -26,7 +26,8 @@ const MIRAGE_PAGES = [
   { key: "followups_dashboard", file: "followups_dashboard.html", label: "متابعة المهام",       ico: "📈", group: "لوحات الإدارة", tone: "followup" },
   { key: "dashboard_readiness", file: "dashboard_readiness.html", label: "إحصاءات الجهوزية",    ico: "📊", group: "لوحات الإدارة" },
   { key: "achievements",        file: "achievements.html",        label: "منجزات المستخدمين",   ico: "🏅", group: "لوحات الإدارة", top: true },
-  { key: "admin",               file: "admin.html",               label: "إدارة النظام",        ico: "⚙️", group: "الإعدادات" }
+  { key: "admin",               file: "admin.html",               label: "إدارة النظام",        ico: "⚙️", group: "الإعدادات" },
+  { key: "hints",               file: "hints.html",               label: "شرح الخانات",         ico: "💬", group: "الإعدادات" }
 ];
 
 const Mirage = {
@@ -66,7 +67,21 @@ const Mirage = {
   logout: function () {
     var done = function () {
       try { sessionStorage.clear(); } catch (e) {}
-      localStorage.clear();
+      // تُمحى بيانات الجلسة، ويبقى ما يخصّ هذا الجهاز لا هذه الجلسة:
+      // الإشعارات التي عُرضت (فلا تتكرّر نافذتها عند كل دخول)،
+      // وما لم يُرفع بعد من بيانات أُدخلت بلا إنترنت (فلا يضيع عمله)،
+      // وبصمة الجهاز.
+      try {
+        var keep = {}, i, k;
+        for (i = 0; i < localStorage.length; i++) {
+          k = localStorage.key(i);
+          if (/^(mgSeenNotes:|mgQueue:|mgScan:|mgDevice$)/.test(k)) keep[k] = localStorage.getItem(k);
+        }
+        localStorage.clear();
+        for (k in keep) { if (keep.hasOwnProperty(k)) localStorage.setItem(k, keep[k]); }
+      } catch (e) {
+        try { localStorage.clear(); } catch (e2) {}
+      }
       location.href = "index.html";
     };
     if (typeof MirageAPI !== "undefined") {
@@ -80,7 +95,8 @@ const Mirage = {
   can: function (key) {
     var u = this.session();
     if (!u.realName) return false;
-    if (key === "admin") return this.isAdmin();       // مدير النظام وحده
+    // مدير النظام وحده: لوحة الإدارة، وشرح الخانات الذي يظهر لكل المستخدمين
+    if (key === "admin" || key === "hints") return this.isAdmin();
     // صفحات الإدارة العليا: مدير النظام ومن مستواه 2 فأعلى — والخادم يتحقّق مجدداً
     var m0 = MIRAGE_PAGES.filter(function (p) { return p.key === key; })[0];
     if (m0 && m0.top) return this.isAdmin() || u.accessLevel >= 2;
@@ -292,7 +308,189 @@ const Mirage = {
         };
       }
     }
+
+    this.hints.start();
     return u;
+  },
+
+  /* ═══════════ شرح الخانات ═══════════
+     النصّ الأصلي مكتوب في الصفحة نفسها، ومدير النظام قد يستبدله.
+     البدائل قليلة وصغيرة، فتُقرأ مرة وتُخزَّن في المتصفح:
+     الصفحة تُطبّق المخزَّن فوراً بلا انتظار شبكة، ثم يصل الجديد
+     في الخلفية فيُطبَّق إن تغيّر. فلا تأخير محسوس على أي صفحة. */
+
+  hints: {
+    KEY: "mgHints",
+    map: null,
+
+    _read: function () {
+      try { return JSON.parse(localStorage.getItem(this.KEY) || "null"); }
+      catch (e) { return null; }
+    },
+
+    /** مفتاح الشرح: من اسم الصفحة ونصّه الأصلي — يُحسب كما يحسبه الفهرس */
+    _key: function (page, text) {
+      var norm = String(text || "").replace(/\s+/g, " ").trim();
+      return page.replace(/\.html$/, "") + "." + this._md5(page + "|" + norm).slice(0, 10);
+    },
+
+    _page: function () {
+      return (location.pathname.split("/").pop() || "index.html") || "index.html";
+    },
+
+    /** يستبدل نصوص الشروح الظاهرة الآن بما عدّله مدير النظام */
+    apply: function (root) {
+      if (!this.map) return;
+      var page = this._page(), self = this;
+      var list = (root || document).querySelectorAll(".hint");
+      for (var i = 0; i < list.length; i++) {
+        var el = list[i];
+        if (el.getAttribute("data-hint-done") === "1") continue;
+        var txt = (el.textContent || "").replace(/\s+/g, " ").trim();
+        if (!txt) continue;                       // شرح يملؤه البرنامج
+        var k = self._key(page, txt);
+        el.setAttribute("data-hint-key", k);
+        el.setAttribute("data-hint-def", txt);   // الأصل محفوظ، فيعود إن أُلغي التعديل
+        el.setAttribute("data-hint-done", "1");
+        if (self.map[k] && self.map[k] !== txt) el.textContent = self.map[k];
+      }
+    },
+
+    /** يعيد الفحص حين تُرسم بطاقات جديدة — بهدوء وبلا إرهاق */
+    _watch: function () {
+      if (!window.MutationObserver || this._watching) return;
+      this._watching = true;
+      var self = this, timer = null;
+      new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          if (muts[i].addedNodes && muts[i].addedNodes.length) {
+            clearTimeout(timer);
+            timer = setTimeout(function () { self.apply(); }, 250);
+            return;
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    },
+
+    start: function () {
+      var self = this;
+      var cached = this._read();
+      this.map = (cached && cached.m) || {};
+      this.apply();
+      this._watch();
+
+      // التحديث في الخلفية: لا يؤخّر رسم الصفحة
+      setTimeout(function () {
+        if (typeof MirageAPI === "undefined") return;
+        MirageAPI.call("hints_list", {}).then(function (res) {
+          if (!res || res.status !== "success") return;
+          var m = {};
+          (res.rows || []).forEach(function (r) { m[r.key] = r.note; });
+          if (JSON.stringify(m) === JSON.stringify(self.map)) return;
+          self.map = m;
+          try { localStorage.setItem(self.KEY, JSON.stringify({ at: Date.now(), m: m })); } catch (e) {}
+          // إعادة التطبيق على ما رُسم فعلاً
+          var all = document.querySelectorAll(".hint[data-hint-key]");
+          for (var i = 0; i < all.length; i++) all[i].removeAttribute("data-hint-done");
+          self._fresh();
+        }, function () {});
+      }, 50);
+    },
+
+    /** إعادة تطبيق بعد وصول تعديل جديد — والأصل محفوظ في الصفحة نفسها */
+    _fresh: function () {
+      var all = document.querySelectorAll(".hint[data-hint-key]");
+      for (var i = 0; i < all.length; i++) {
+        var k = all[i].getAttribute("data-hint-key");
+        var d = all[i].getAttribute("data-hint-def") || all[i].textContent;
+        all[i].textContent = this.map[k] || d;
+        all[i].setAttribute("data-hint-done", "1");
+      }
+      this.apply();
+    },
+
+    /** بصمة قصيرة مطابقة لما يحسبه بناء الفهرس (md5) */
+    _md5: function (s) {
+      /* md5 مختصر — يكفي لتوليد مفتاح ثابت، لا يُستعمل للحماية */
+      function rl(n, c) { return (n << c) | (n >>> (32 - c)); }
+      function au(x, y) {
+        var l = (x & 0xFFFF) + (y & 0xFFFF), m = (x >> 16) + (y >> 16) + (l >> 16);
+        return (m << 16) | (l & 0xFFFF);
+      }
+      function cm(q, a, b, x, s, t) { return au(rl(au(au(a, q), au(x, t)), s), b); }
+      function ff(a, b, c, d, x, s, t) { return cm((b & c) | (~b & d), a, b, x, s, t); }
+      function gg(a, b, c, d, x, s, t) { return cm((b & d) | (c & ~d), a, b, x, s, t); }
+      function hh(a, b, c, d, x, s, t) { return cm(b ^ c ^ d, a, b, x, s, t); }
+      function ii(a, b, c, d, x, s, t) { return cm(c ^ (b | ~d), a, b, x, s, t); }
+      function u8(str) {
+        var out = [], i, c;
+        for (i = 0; i < str.length; i++) {
+          c = str.charCodeAt(i);
+          if (c < 128) out.push(c);
+          else if (c < 2048) { out.push(192 | (c >> 6), 128 | (c & 63)); }
+          else if (c < 55296 || c >= 57344) { out.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63)); }
+          else {
+            i++;
+            var cp = 65536 + (((c & 1023) << 10) | (str.charCodeAt(i) & 1023));
+            out.push(240 | (cp >> 18), 128 | ((cp >> 12) & 63), 128 | ((cp >> 6) & 63), 128 | (cp & 63));
+          }
+        }
+        return out;
+      }
+      function blks(bytes) {
+        var nblk = ((bytes.length + 8) >> 6) + 1, blks = new Array(nblk * 16), i;
+        for (i = 0; i < nblk * 16; i++) blks[i] = 0;
+        for (i = 0; i < bytes.length; i++) blks[i >> 2] |= bytes[i] << ((i % 4) * 8);
+        blks[i >> 2] |= 0x80 << ((i % 4) * 8);
+        blks[nblk * 16 - 2] = bytes.length * 8;
+        return blks;
+      }
+      var x = blks(u8(String(s))), a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+      var S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+      for (var i = 0; i < x.length; i += 16) {
+        var oa = a, ob = b, oc = c, od = d;
+        a = ff(a, b, c, d, x[i], S[0], -680876936);    d = ff(d, a, b, c, x[i + 1], S[1], -389564586);
+        c = ff(c, d, a, b, x[i + 2], S[2], 606105819); b = ff(b, c, d, a, x[i + 3], S[3], -1044525330);
+        a = ff(a, b, c, d, x[i + 4], S[0], -176418897); d = ff(d, a, b, c, x[i + 5], S[1], 1200080426);
+        c = ff(c, d, a, b, x[i + 6], S[2], -1473231341); b = ff(b, c, d, a, x[i + 7], S[3], -45705983);
+        a = ff(a, b, c, d, x[i + 8], S[0], 1770035416); d = ff(d, a, b, c, x[i + 9], S[1], -1958414417);
+        c = ff(c, d, a, b, x[i + 10], S[2], -42063);   b = ff(b, c, d, a, x[i + 11], S[3], -1990404162);
+        a = ff(a, b, c, d, x[i + 12], S[0], 1804603682); d = ff(d, a, b, c, x[i + 13], S[1], -40341101);
+        c = ff(c, d, a, b, x[i + 14], S[2], -1502002290); b = ff(b, c, d, a, x[i + 15], S[3], 1236535329);
+        a = gg(a, b, c, d, x[i + 1], S[4], -165796510); d = gg(d, a, b, c, x[i + 6], S[5], -1069501632);
+        c = gg(c, d, a, b, x[i + 11], S[6], 643717713); b = gg(b, c, d, a, x[i], S[7], -373897302);
+        a = gg(a, b, c, d, x[i + 5], S[4], -701558691); d = gg(d, a, b, c, x[i + 10], S[5], 38016083);
+        c = gg(c, d, a, b, x[i + 15], S[6], -660478335); b = gg(b, c, d, a, x[i + 4], S[7], -405537848);
+        a = gg(a, b, c, d, x[i + 9], S[4], 568446438); d = gg(d, a, b, c, x[i + 14], S[5], -1019803690);
+        c = gg(c, d, a, b, x[i + 3], S[6], -187363961); b = gg(b, c, d, a, x[i + 8], S[7], 1163531501);
+        a = gg(a, b, c, d, x[i + 13], S[4], -1444681467); d = gg(d, a, b, c, x[i + 2], S[5], -51403784);
+        c = gg(c, d, a, b, x[i + 7], S[6], 1735328473); b = gg(b, c, d, a, x[i + 12], S[7], -1926607734);
+        a = hh(a, b, c, d, x[i + 5], S[8], -378558);   d = hh(d, a, b, c, x[i + 8], S[9], -2022574463);
+        c = hh(c, d, a, b, x[i + 11], S[10], 1839030562); b = hh(b, c, d, a, x[i + 14], S[11], -35309556);
+        a = hh(a, b, c, d, x[i + 1], S[8], -1530992060); d = hh(d, a, b, c, x[i + 4], S[9], 1272893353);
+        c = hh(c, d, a, b, x[i + 7], S[10], -155497632); b = hh(b, c, d, a, x[i + 10], S[11], -1094730640);
+        a = hh(a, b, c, d, x[i + 13], S[8], 681279174); d = hh(d, a, b, c, x[i], S[9], -358537222);
+        c = hh(c, d, a, b, x[i + 3], S[10], -722521979); b = hh(b, c, d, a, x[i + 6], S[11], 76029189);
+        a = hh(a, b, c, d, x[i + 9], S[8], -640364487); d = hh(d, a, b, c, x[i + 12], S[9], -421815835);
+        c = hh(c, d, a, b, x[i + 15], S[10], 530742520); b = hh(b, c, d, a, x[i + 2], S[11], -995338651);
+        a = ii(a, b, c, d, x[i], S[12], -198630844);   d = ii(d, a, b, c, x[i + 7], S[13], 1126891415);
+        c = ii(c, d, a, b, x[i + 14], S[14], -1416354905); b = ii(b, c, d, a, x[i + 5], S[15], -57434055);
+        a = ii(a, b, c, d, x[i + 12], S[12], 1700485571); d = ii(d, a, b, c, x[i + 3], S[13], -1894986606);
+        c = ii(c, d, a, b, x[i + 10], S[14], -1051523); b = ii(b, c, d, a, x[i + 1], S[15], -2054922799);
+        a = ii(a, b, c, d, x[i + 8], S[12], 1873313359); d = ii(d, a, b, c, x[i + 15], S[13], -30611744);
+        c = ii(c, d, a, b, x[i + 6], S[14], -1560198380); b = ii(b, c, d, a, x[i + 13], S[15], 1309151649);
+        a = ii(a, b, c, d, x[i + 4], S[12], -145523070); d = ii(d, a, b, c, x[i + 11], S[13], -1120210379);
+        c = ii(c, d, a, b, x[i + 2], S[14], 718787259); b = ii(b, c, d, a, x[i + 9], S[15], -343485551);
+        a = au(a, oa); b = au(b, ob); c = au(c, oc); d = au(d, od);
+      }
+      var hex = "0123456789abcdef", out = "";
+      [a, b, c, d].forEach(function (n) {
+        for (var j = 0; j < 4; j++) {
+          out += hex.charAt((n >> (j * 8 + 4)) & 0x0F) + hex.charAt((n >> (j * 8)) & 0x0F);
+        }
+      });
+      return out;
+    }
   },
 
   _sidebarHTML: function (u, current) {

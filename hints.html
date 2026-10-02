@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>شرح الخانات — ميراج</title>
+<link href="vendor/fonts.css" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="vendor/sweetalert2.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="mirage-api.js"></script>
+<script src="app.js"></script>
+<script src="hints.js"></script>
+<style>
+  .hn-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;
+    padding: 13px 0; border-bottom: 1px solid var(--border, #E2E8F0);
+  }
+  .hn-row:last-child { border-bottom: 0; }
+  .hn-field { font-size: 14px; font-weight: 900; color: var(--brand-dark); }
+  .hn-note  { font-size: 13px; color: var(--text-muted); line-height: 1.9; margin-top: 3px; }
+  .hn-note.edited { color: #1D4ED8; font-weight: 700; }
+  .hn-old   { font-size: 12px; color: #94A3B8; margin-top: 3px; }
+  .hn-acts  { white-space: nowrap; display: flex; gap: 6px; }
+  @media (max-width: 700px) {
+    .hn-row { grid-template-columns: 1fr; }
+    .hn-acts { justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="main">
+<header class="topbar" id="topbar"></header>
+<div class="content">
+
+  <div class="alert alert-info">
+    هذه الشروح هي الأسطر الصغيرة تحت الخانات في صفحات النظام، تُرشد المستخدم
+    إلى ما يكتبه. عدّل منها ما شئت بلغة شركتك، ويظهر تعديلك في الصفحات فوراً.
+    وما لا تعدّله يبقى كما هو.
+  </div>
+
+  <div class="grid-3 filters">
+    <div class="field">
+      <label for="fPage">الصفحة</label>
+      <select id="fPage"><option value="">كل الصفحات</option></select>
+    </div>
+    <div class="field">
+      <label for="fState">الحالة</label>
+      <select id="fState">
+        <option value="">الكل</option>
+        <option value="1">المعدَّلة فقط</option>
+        <option value="0">الأصلية فقط</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fQ">بحث</label>
+      <input type="text" id="fQ" placeholder="اسم الخانة أو نصّ الشرح">
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="stat"><div class="label">مجموع الخانات</div><div class="value" id="kAll">—</div></div>
+    <div class="stat is-success"><div class="label">معدَّلة</div><div class="value" id="kEdit">—</div></div>
+    <div class="stat"><div class="label">صفحات</div><div class="value" id="kPages">—</div></div>
+  </div>
+
+  <div id="box"><div class="empty">جارٍ التحميل…</div></div>
+
+</div>
+</div>
+</div>
+
+<script>
+var ME = Mirage.boot({ page: 'hints', title: 'شرح الخانات', sub: 'نصوص الإرشاد تحت خانات الصفحات' });
+var OVER = {};          /* المفتاح ← الشرح المعدَّل */
+var META = {};          /* المفتاح ← من عدّله ومتى */
+var CAT  = (typeof MIRAGE_HINTS !== 'undefined') ? MIRAGE_HINTS : [];
+
+if (ME) {
+  if (!Mirage.isAdmin()) {
+    document.querySelector('.content').innerHTML =
+      '<div class="alert alert-warn">هذه الصفحة لمدير النظام وحده.</div>';
+  } else {
+    ['fPage', 'fState'].forEach(function (i) { document.getElementById(i).onchange = paint; });
+    document.getElementById('fQ').oninput = paint;
+
+    Mirage.fillSelect('fPage',
+      CAT.map(function (h) { return h.p; })
+         .filter(function (v, i, a) { return a.indexOf(v) === i; }).sort()
+         .map(function (p) { return { value: p, text: p }; }),
+      'كل الصفحات', '');
+
+    load();
+  }
+}
+
+function load() {
+  Mirage.api('hints_list', {}).then(function (res) {
+    if (res.status !== 'success') {
+      document.getElementById('box').innerHTML = '';
+      return Mirage.fail(res);
+    }
+    OVER = {}; META = {};
+    (res.rows || []).forEach(function (r) {
+      OVER[r.key] = r.note;
+      META[r.key] = { at: r.at, who: r.who };
+    });
+    paint();
+  });
+}
+
+/** الشرح الظاهر الآن لهذه الخانة: المعدَّل إن وُجد، وإلا الأصلي */
+function noteOf(h) { return OVER[h.k] || h.d; }
+
+function paint() {
+  var page = document.getElementById('fPage').value;
+  var st   = document.getElementById('fState').value;
+  var q    = document.getElementById('fQ').value.trim();
+
+  var rows = CAT.filter(function (h) {
+    if (page && h.p !== page) return false;
+    var edited = !!OVER[h.k];
+    if (st === '1' && !edited) return false;
+    if (st === '0' && edited) return false;
+    if (q && (h.f + ' ' + h.d + ' ' + noteOf(h)).indexOf(q) < 0) return false;
+    return true;
+  });
+
+  document.getElementById('kAll').textContent   = CAT.length;
+  document.getElementById('kEdit').textContent  = Object.keys(OVER).length;
+  document.getElementById('kPages').textContent =
+    CAT.map(function (h) { return h.p; })
+       .filter(function (v, i, a) { return a.indexOf(v) === i; }).length;
+
+  var box = document.getElementById('box');
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty"><span class="ico">💬</span><b>لا خانات مطابقة</b>' +
+                    'غيّر الصفحة أو البحث.</div>';
+    return;
+  }
+
+  // مجموعة لكل صفحة، كما يراها المستخدم
+  var pages = rows.map(function (h) { return h.p; })
+                  .filter(function (v, i, a) { return a.indexOf(v) === i; });
+
+  box.innerHTML = pages.map(function (p) {
+    var items = rows.filter(function (h) { return h.p === p; });
+    return '<div class="card">' +
+      '<div class="card-head"><div><h2>' + esc(p) + '</h2>' +
+        '<p>' + Mirage.ltr(String(items.length)) + ' خانة</p></div></div>' +
+      items.map(rowHtml).join('') +
+    '</div>';
+  }).join('');
+}
+
+function rowHtml(h) {
+  var i = CAT.indexOf(h);
+  var edited = !!OVER[h.k];
+  var m = META[h.k] || {};
+  return '<div class="hn-row">' +
+    '<div>' +
+      '<div class="hn-field">' + esc(h.f || '—') +
+        (edited ? ' <span class="tag tag-blue">معدَّل</span>' : '') + '</div>' +
+      '<div class="hn-note' + (edited ? ' edited' : '') + '">' + esc(noteOf(h)) + '</div>' +
+      (edited
+        ? '<div class="hn-old">الأصلي: ' + esc(h.d) +
+          (m.who ? ' · عدّله ' + esc(m.who) + ' ' + Mirage.ltr(m.at || '') : '') + '</div>'
+        : '') +
+    '</div>' +
+    '<div class="hn-acts">' +
+      '<button class="btn btn-ghost btn-sm" type="button" onclick="edit(' + i + ')">تعديل</button>' +
+      (edited
+        ? '<button class="btn btn-danger btn-sm" type="button" onclick="reset_(' + i + ')">إرجاع الأصلي</button>'
+        : '') +
+    '</div>' +
+  '</div>';
+}
+
+function edit(i) {
+  var h = CAT[i]; if (!h) return;
+  Swal.fire({
+    title: h.f || 'شرح خانة',
+    html:
+      '<div style="text-align:right;direction:rtl">' +
+        '<label style="font-size:13px;font-weight:800;display:block;margin-bottom:4px">' +
+          'الشرح الذي يراه المستخدم</label>' +
+        '<textarea id="hnTxt" class="swal2-textarea" rows="3" style="margin:0;width:100%">' +
+          esc(noteOf(h)) + '</textarea>' +
+        '<div style="font-size:12px;color:#64748B;line-height:1.9;margin-top:10px">' +
+          '<b>الصفحة:</b> ' + esc(h.p) + '<br>' +
+          '<b>النصّ الأصلي:</b> ' + esc(h.d) +
+        '</div>' +
+      '</div>',
+    width: 540,
+    showCancelButton: true,
+    confirmButtonText: 'حفظ',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#2563EB', cancelButtonColor: '#64748B',
+    focusConfirm: false,
+    preConfirm: function () {
+      var v = document.getElementById('hnTxt').value.trim();
+      if (!v) { Swal.showValidationMessage('اكتب الشرح، أو أغلق النافذة واضغط «إرجاع الأصلي»'); return false; }
+      if (v.length > 600) { Swal.showValidationMessage('الشرح أطول من ستمئة حرف'); return false; }
+      return v;
+    }
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    // النصّ نفسه بلا تغيير: يُعتبر إرجاعاً للأصلي بدل تخزين نسخة مطابقة
+    if (r.value === h.d) return doReset(h);
+    Mirage.api('hint_save', { key: h.k, note: r.value, page: h.p, field: h.f })
+      .then(function (res) {
+        if (res.status !== 'success') return Mirage.fail(res);
+        Mirage.toast('حُفظ الشرح');
+        bust();
+        load();
+      });
+  });
+}
+
+function reset_(i) {
+  var h = CAT[i]; if (!h) return;
+  Mirage.confirm('سيعود الشرح الأصلي: «' + h.d + '»', 'إرجاع الأصلي').then(function (yes) {
+    if (yes) doReset(h);
+  });
+}
+
+function doReset(h) {
+  Mirage.api('hint_reset', { key: h.k }).then(function (res) {
+    if (res.status !== 'success') return Mirage.fail(res);
+    Mirage.toast('أُرجِع الشرح الأصلي');
+    bust();
+    load();
+  });
+}
+
+/** يُمحى المخزَّن محلياً ليُقرأ الجديد فوراً في هذه الصفحة وما بعدها */
+function bust() {
+  try { localStorage.removeItem(Mirage.hints.KEY); } catch (e) {}
+  Mirage.hints.map = null;
+  Mirage.hints.start();
+}
+</script>
+</body>
+</html>

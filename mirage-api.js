@@ -412,12 +412,12 @@ const MirageAPI = {
           };
         }
         if (/Invalid login credentials/i.test(m)) {
+          // بيانات دخول خاطئة: لا تفاصيل تقنية ولا ردّ خادم —
+          // فالتفاصيل هنا تُرشد من يحاول التخمين، ولا تنفع صاحب الحساب.
           return {
             status: "error",
-            message: "اسم المستخدم أو كلمة المرور غير صحيحة.",
-            detail: "اكتب اسم المستخدم وحده (admin) بلا @mirage.local. " +
-                    "وتحقّق من وجود الحساب: Authentication ← Users.",
-            raw: m
+            message: "يرجى التأكد من إدخال الاسم وكلمة المرور بشكل صحيح",
+            detail: "يمكنك مراجعة مدير النظام للإستفسار"
           };
         }
         if (/rate limit|too many/i.test(m)) {
@@ -1336,6 +1336,40 @@ const MirageAPI = {
       });
       if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ سياسة الدوام");
       return { status: "success" };
+    },
+
+    /* ─────────── شرح الخانات ─────────── */
+
+    hints_list: async function () {
+      var r = await SB.rpc("hints_list");
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّرت قراءة شرح الخانات");
+      return { status: "success", rows: r.data || [] };
+    },
+
+    hint_save: async function (p) {
+      var r = await SB.rpc("hint_save", {
+        p_key: this.str(p.key), p_note: this.str(p.note),
+        p_page: this.str(p.page) || null, p_field: this.str(p.field) || null
+      });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر حفظ الشرح");
+      return { status: "success" };
+    },
+
+    hint_reset: async function (p) {
+      var r = await SB.rpc("hint_reset", { p_key: this.str(p.key) });
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّر إرجاع الشرح الأصلي");
+      return { status: "success" };
+    },
+
+    /** من يحقّ للمستخدم أن يرى دوامهم: هو وفريقه، ومشاريعه هو */
+    attend_scope: async function () {
+      var r = await SB.rpc("attend_scope");
+      if (r.error) return this.needUpgrade(r.error) || this.err(r.error, "تعذّرت قراءة نطاقك");
+      var d = r.data || {};
+      return {
+        status: "success", me: d.me || "", top: d.top === true,
+        people: d.people || [], projects: d.projects || []
+      };
     },
 
     /** التسجيلات الموسومة بالاشتباه والمحاولات المرفوضة */

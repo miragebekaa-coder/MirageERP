@@ -166,8 +166,7 @@ document.getElementById('flowForm').onchange = function () { fillFlowUsers(); lo
 document.getElementById('flowUser').onchange = loadFlow;
 document.getElementById('previewUser').onchange = previewRoute;
 
-/* ─── الإشعارات الموجّهة وسجلّها ─── */
-NOTICE_LOG = Mirage.noticeLog('noticeLog');
-Mirage.notifyComposer('composer', { onSent: function () { NOTICE_LOG.reload(); } });
+/* إرسال الإشعارات وسجلّها صارا في صفحة «الإشعارات» وحدها —
+   كانا هنا أيضاً، ووجود الشيء في مكانين يُربك ولا يفيد. */
 
 /* ─── فحص الاتصال ─── */

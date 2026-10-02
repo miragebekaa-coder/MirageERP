@@ -139,15 +139,28 @@ document.querySelectorAll('.tab').forEach(function (t) {
 
 thisMonth();
 
-Mirage.lists().then(function (l) {
-  Mirage.fillSelect('fProject', (l.projects || []).map(function (p) {
-    return { value: p.name || p, text: p.name || p };
-  }), 'كل المشاريع', 'all');
-  Mirage.api('user_directory', {}).then(function (r) {
-    var names = (r.users || []).map(function (u) { return u.name || u.real_name || u; })
-      .filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort();
-    Mirage.fillSelect('fPerson', names.map(function (n) { return { value: n, text: n }; }), 'الجميع', '');
-  });
+/* القائمتان تُبنيان من نطاق المستخدم نفسه لا من كل النظام:
+   المسؤول يرى نفسه ومن تحت إدارته، ومشاريعه هو وحدها.
+   والخادم هو الذي يحسب النطاق، فلا تنزل إلى المتصفح أسماء ليست من شأنه. */
+Mirage.api('attend_scope', {}).then(function (s) {
+  if (s.status !== 'success') { Mirage.fail(s); return loadAll(); }
+
+  Mirage.fillSelect('fPerson',
+    (s.people || []).map(function (n) { return { value: n, text: n }; }),
+    s.top ? 'الجميع' : (s.people.length > 1 ? 'أنا وفريقي' : 'أنا'), '');
+
+  Mirage.fillSelect('fProject',
+    (s.projects || []).map(function (n) { return { value: n, text: n }; }),
+    s.top ? 'كل المشاريع' : (s.projects.length > 1 ? 'كل مشاريعي' : 'مشروعي'), 'all');
+
+  // مسؤول بلا فريق: القائمة اسمه وحده، فلا معنى لإظهارها
+  if (!s.top && (s.people || []).length < 2) {
+    document.getElementById('fPerson').closest('.field').style.display = 'none';
+  }
+  if (!s.top && (s.projects || []).length < 2) {
+    document.getElementById('fProject').closest('.field').style.display = 'none';
+  }
+
   loadAll();
 });
 

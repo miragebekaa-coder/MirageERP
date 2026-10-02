@@ -306,6 +306,19 @@ tbody tr:hover { background: #FAFCFF; }
 }
 .tab:hover { background: var(--surface-alt); color: var(--brand-dark); }
 .tab.active { background: var(--brand-dark); color: #fff; }
+
+/* عنوان يسمّي مجموعة التبويبات: كل مجموعة في سطرها،
+   فتُقرأ الصفحة بآلية العمل لا بعشرة أزرار متجاورة */
+.tabs:has(.tab-sep) { flex-wrap: wrap; overflow-x: visible; }
+.tabs:has(.tab-sep) .tab { flex: none; padding: 10px 15px; }
+.tab-sep {
+  flex-basis: 100%; white-space: nowrap;
+  font-size: 11px; font-weight: 900; letter-spacing: .02em;
+  color: var(--text-muted); opacity: .8;
+  margin: 8px 6px 2px; padding: 0;
+}
+.tabs > .tab-sep:first-child { margin-top: 2px; }
+
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
